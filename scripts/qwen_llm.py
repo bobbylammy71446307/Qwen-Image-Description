@@ -1,5 +1,6 @@
 from openai import OpenAI
 import base64
+import os
 
 import json
 import requests
@@ -12,7 +13,11 @@ from io import BytesIO
 class qwen_llm():
 
     def __init__(self, mode, detection_list=[]):
-        self.client = OpenAI(api_key="YOUR_API_KEY",
+        api_key = os.getenv("qwen_api")
+        if not api_key:
+            raise ValueError("Environment variable 'qwen_api' is not set. Please set it with your Qwen API key.")
+
+        self.client = OpenAI(api_key=api_key,
                             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
                             )
         self.mode=mode

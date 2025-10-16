@@ -6,6 +6,7 @@ services:
     container_name: image-description-service
     environment:
       - PYTHONUNBUFFERED=1
+      - qwen_api=${qwen_api}
     volumes:
       - ./models:/app/models:ro
       - ./scripts:/app/scripts:ro
