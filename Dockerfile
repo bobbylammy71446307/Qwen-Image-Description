@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y \
     libgomp1 \
     libgtk-3-0 \
     libgl1 \
+    fonts-dejavu-core \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -21,8 +23,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY . .
 
-# Create output directory
-RUN mkdir -p /app/output
+# Create necessary directories
+RUN mkdir -p /app/output /app/images /app/models
 
-# Default command (can be overridden in docker-compose)
-CMD ["python", "/app/scripts/yolo_detection_self.py"]
+# Set environment variables (can be overridden)
+ENV PYTHONUNBUFFERED=1
+
+# Default command (can be overridden in docker-compose or at runtime)
+CMD ["python", "/app/scripts/image_description.py"]
