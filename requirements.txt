@@ -1,8 +1,16 @@
+# Computer Vision and ML
 ultralytics
 opencv-python
 numpy
 torch
 torchvision
+Pillow
+
+# API and Web
+openai
+requests
+flask
+
+# Utilities
 pyyaml
 pytz
-flask
