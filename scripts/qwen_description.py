@@ -145,7 +145,8 @@ class QwenDescriber:
         - Normalize any remaining 'all fluorescent' lines to the exact form:
             "All fluorescent lamps are lit up, no"
         - Remove lines that indicate "no emergency exit" (they should not appear).
-        - Remove lines that start with "no visible" or contain "no visible".
+        - Remove lines that contain both "gate" and "visible" together (e.g., "gate not visible", "no gate visible").
+        - Remove lines that contain "no visible" or "not visible".
         - If gate is closed, replace the line with "no".
         - Keep all other lines unchanged.
         """
@@ -162,12 +163,15 @@ class QwenDescriber:
             # Drop explicit "no emergency exit" lines
             if "no emergency exit" in low or "no emergency exit door" in low:
                 continue
-            # Drop lines containing "no visible"
-            if "no visible" in low:
+            # Drop lines that mention gate visibility (gate not visible, no gate visible, etc.)
+            if "gate" in low and "visible" in low:
                 continue
-            # If gate is closed, replace with "no"
+            # Drop lines containing "no visible" or "not visible"
+            if "no visible" in low or "not visible" in low:
+                continue
+            # If gate is closed, normalize to "Gate closed, no"
             if "gate" in low and "closed" in low:
-                out_lines.append("no")
+                out_lines.append("Gate closed, no")
                 continue
             # If line explicitly states fluorescent lamps are NOT all lit, keep it exactly
             if "not all" in low or "not all lit" in low:
@@ -211,14 +215,12 @@ class QwenDescriber:
                 question=(
                     "You are a security guard of a factory reviewing the image. Follow instructions exactly and output only the "
                     "required observations — no explanation, no reasoning, no extra text.\n\n"
-                    "1) Check gate closure status: if any gate is visible, report whether gate is closed. "
-                    "If none are visible, state \"No gate visible\".\n"
-                    "2) Provide exactly two additional distinct security-relevant observations (e.g., persons, "
+                    "1) Check gate closure status: if any gate is visible, report whether gate is closed, if none are visible, state \"No gate visible\".\n"
+                    "2) Provide exactly two additional distinct security-relevant observations besides gate status (e.g., persons, "
                     "obstructions, water on floor, smoke, broken glass). Do not repeat observations and keep each one short.\n"
                     "3) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
                     "4) Output format: three separate lines, each line exactly: <observation>, <yes|no>\n"
                     "- use minimal phrasing (no full sentences, no labels, no numbering).\n"
-                    "- if an item cannot be determined from the image, use \"Not visible\" as the observation and \"no\" as the state.\n\n"
                     "Example:\n"
                     "Fluorescent lamps not all lit, yes\n"
                     "Emergency exit door closed, no\n"
@@ -477,7 +479,7 @@ class QwenDescriber:
 
 if __name__ == "__main__":
     # Example usage of the QwenDescriber class
-    image = "https://hkpic1.aimo.tech/securityClockOut/20251016/as00107/23/20251016233359219-as00107-%E5%8F%B3.jpg"  # Local image path
+    image = "https://hkpic1.aimo.tech/securityClockOut/20251020/as00122/06/20251020060315303-as00122-右.jpg"  # Local image path
 
     # Create describer instance with custom detection objects (optional)
     detection_objects = ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]

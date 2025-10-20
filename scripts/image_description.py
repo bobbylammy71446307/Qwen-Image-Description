@@ -2,12 +2,39 @@
 
 import sys
 import os
+import json
 from datetime import datetime, timedelta
 import pytz
 import yaml
 import requests
 from qwen_description import QwenDescriber
 from image_get import ClockOutReader
+
+PROCESSED_FILE = "processed_images.json"
+
+def load_processed_list(filepath=PROCESSED_FILE):
+    """Load the list of already processed image URLs"""
+    if os.path.exists(filepath):
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                print(f"[INFO] Loaded {len(data)} processed URLs from {filepath}")
+                return set(data)
+        except Exception as e:
+            print(f"[WARNING] Error loading processed list: {e}")
+            return set()
+    return set()
+
+def save_processed_list(processed_urls, filepath=PROCESSED_FILE):
+    """Save the list of processed image URLs"""
+    try:
+        with open(filepath, 'w') as f:
+            json.dump(list(processed_urls), f, indent=2)
+        print(f"[INFO] Saved {len(processed_urls)} processed URLs to {filepath}")
+        return True
+    except Exception as e:
+        print(f"[ERROR] Error saving processed list: {e}")
+        return False
 
 def post_json_data(json_data, post_url, timeout=10):
     try:
@@ -104,6 +131,9 @@ def main():
 
     print(f"[INFO] Processing images from: {start_time.strftime('%Y-%m-%d %H:%M:%S')} to {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
+    # Load previously processed URLs
+    processed_urls = load_processed_list()
+
     # Fetch clock out list for the specified time range
     result = reader.get_clockout_list(page_no=1, start_time=start_time, end_time=current_time)
 
@@ -120,27 +150,37 @@ def main():
 
     print(f"[INFO] Found {len(all_urls)} total URLs in response")
 
-    if len(all_urls) == 0:
-        print("[INFO] No URLs to process. Exiting.")
+    # Filter out already processed URLs
+    unprocessed_urls = [url for url in all_urls if url not in processed_urls]
+    print(f"[INFO] {len(unprocessed_urls)} new URLs to process ({len(all_urls) - len(unprocessed_urls)} already processed)")
+
+    if len(unprocessed_urls) == 0:
+        print("[INFO] No new URLs to process. Exiting.")
         sys.exit(0)
 
     output_path_list = []
     processed_count = 0
     failed_count = 0
 
-    # Process each URL
-    for idx, url in enumerate(all_urls, 1):
+    # Process each unprocessed URL
+    for idx, url in enumerate(unprocessed_urls, 1):
         try:
-            print(f"[PROCESSING] ({idx}/{len(all_urls)}) {url}")
+            print(f"[PROCESSING] ({idx}/{len(unprocessed_urls)}) {url}")
 
             output_path = describer.process_and_annotate(url)
             output_path_list.append(output_path)
+
+            # Add to processed set immediately after success
+            processed_urls.add(url)
             processed_count += 1
             print(f"[SUCCESS] Processed: {url}")
 
         except Exception as e:
             print(f"[ERROR] Failed processing {url}: {e}")
             failed_count += 1
+
+    # Save updated processed list
+    save_processed_list(processed_urls)
 
     # Post results if any images were processed
     if output_path_list:
