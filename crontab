@@ -1,4 +1,5 @@
 # Run image description script every 12 hours (at 00:00 and 12:00)
-0 */12 * * * root cd /app && /usr/local/bin/python /app/scripts/image_description.py >> /app/logs/cron.log 2>&1
+# Commented out for manual testing - uncomment to enable scheduled runs
+# 0 */12 * * * root cd /app && /usr/local/bin/python /app/scripts/image_description.py >> /app/logs/cron.log 2>&1
 
 # Empty line required at end of cron file

@@ -21,7 +21,10 @@ services:
       - ./images:/app/images
       - ./logs:/app/logs
     working_dir: /app
-    command: ["/bin/sh", "-c", "touch /app/logs/cron.log && cron && tail -f /app/logs/cron.log"]
+    # For testing: run script directly instead of cron
+    command: ["python", "/app/scripts/image_description.py"]
+    # For production: uncomment below to use cron scheduler
+    # command: ["/bin/sh", "-c", "touch /app/logs/cron.log && cron && tail -f /app/logs/cron.log"]
     logging:
       driver: "json-file"
       options:
