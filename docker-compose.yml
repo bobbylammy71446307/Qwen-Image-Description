@@ -20,9 +20,8 @@ services:
       - /home/data/pics/AI/:/app/output
       - ./images:/app/images
       - ./logs:/app/logs
-      - ./crontab:/etc/cron.d/image-description-cron:ro
     working_dir: /app
-    command: ["/bin/sh", "-c", "cron && tail -f /app/logs/cron.log"]
+    command: ["/bin/sh", "-c", "touch /app/logs/cron.log && cron && tail -f /app/logs/cron.log"]
     logging:
       driver: "json-file"
       options:
