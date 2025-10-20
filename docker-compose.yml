@@ -7,6 +7,12 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - qwen_api=${qwen_api}
+      - ROBOT_NAME=${ROBOT_NAME:-as00122}
+      - DEPT_ID=${DEPT_ID:-10}
+      - FETCH_TIME_RANGE_HOURS=${FETCH_TIME_RANGE_HOURS:-12}
+      - API_USERNAME=${API_USERNAME}
+      - API_PASSWORD=${API_PASSWORD}
+      - API_BASE_URL=${API_BASE_URL:-https://hk1.aimo.tech}
     volumes:
       - ./models:/app/models:ro
       - ./scripts:/app/scripts:ro
@@ -14,8 +20,9 @@ services:
       - /home/data/pics/AI/:/app/output
       - ./images:/app/images
       - ./logs:/app/logs
+      - ./crontab:/etc/cron.d/image-description-cron:ro
     working_dir: /app
-    command: ["python", "/app/scripts/image_description.py"]
+    command: ["/bin/sh", "-c", "cron && tail -f /app/logs/cron.log"]
     logging:
       driver: "json-file"
       options:

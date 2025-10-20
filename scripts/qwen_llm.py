@@ -276,23 +276,26 @@ if __name__=="__main__":
     # talker=qwen_llm("license plate detection")
     # talker.action(image=image)
 
-    image="images/lab_2.png"
-    describer=qwen_llm("image description")
-    # duty_list = ["broken and faulty light bulbs", "unshut emergency doors", "shop doors stats"]
-    # describer.action(question=f"you are a security and performing daily surveillance," \
-    #                            "your duty is to check whether there are {duty_list}" \
-    #                            "IMPORTANT:list only 2 or less distinct and unrelated observations in the image, " \
-    #                            "do not answer in full sentence give very minimal observation description only" \
-    #                     #   "IMPORTANT: only list observations of objects that are clearly visible and present in the image, " \
-    #                     #   "do not list an observation if the object is not actually there, " \
-    #                       "for each observation also show the state whether it is urgent, answer yes or no only, " \
-    #                       "Answer in format: ... , ... with observation coming first and state coming next, " \
-    #                       "check for unlit light and check whether shop gate or door is closed first," \
-    #                     #   "if lights are properly lit up, do not give lighting observations" \
-    #                     #   "if doors are closed shut, only give observation if it is an emergency exit"
-    #                       "answer in minimal point form only, ",
-    #                     #   "Example answer format:\n" \
-    #                     #   "Light not fully on, yes\n" \
-    #                     #   "Door open, yes",
-    #                       image=image)
-    describer.action(question="Are there unlit light bulbs in the photo?",image=image)
+    # image="images/lab_2.png"
+    # describer=qwen_llm("image description")
+    # # duty_list = ["broken and faulty light bulbs", "unshut emergency doors", "shop doors stats"]
+    # # describer.action(question=f"you are a security and performing daily surveillance," \
+    # #                            "your duty is to check whether there are {duty_list}" \
+    # #                            "IMPORTANT:list only 2 or less distinct and unrelated observations in the image, " \
+    # #                            "do not answer in full sentence give very minimal observation description only" \
+    # #                     #   "IMPORTANT: only list observations of objects that are clearly visible and present in the image, " \
+    # #                     #   "do not list an observation if the object is not actually there, " \
+    # #                       "for each observation also show the state whether it is urgent, answer yes or no only, " \
+    # #                       "Answer in format: ... , ... with observation coming first and state coming next, " \
+    # #                       "check for unlit light and check whether shop gate or door is closed first," \
+    # #                     #   "if lights are properly lit up, do not give lighting observations" \
+    # #                     #   "if doors are closed shut, only give observation if it is an emergency exit"
+    # #                       "answer in minimal point form only, ",
+    # #                     #   "Example answer format:\n" \
+    # #                     #   "Light not fully on, yes\n" \
+    # #                     #   "Door open, yes",
+    # #                       image=image)
+    # describer.action(question="Are there unlit light bulbs in the photo?",image=image)
+    chatter = qwen_llm("chatter")
+    question = "Create a prompt input to qwen3-omni "
+    chatter.action(question=question)

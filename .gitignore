@@ -1,2 +1,4 @@
 output
 .vscode
+images
+scripts/__pycache__

@@ -15,6 +15,7 @@ class QwenDescriber:
             detection_objects: List of objects to detect (e.g., ["plastic bag", "water puddle"])
         """
         self.describer = qwen_llm("image description")
+        self.chatter = qwen_llm("chatter")
         self.detection_objects = detection_objects or ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
         self.font_header = None
         self.font_body = None
@@ -52,7 +53,16 @@ class QwenDescriber:
         points = []
         raw_lines = text.split('\n')
         for line in raw_lines:
-            points.append(line.split(','))
+            line = line.strip()
+            if line:  # Skip empty lines
+                parts = line.split(',')
+                # Ensure we have at least 2 parts (description and status)
+                if len(parts) >= 2:
+                    points.append([parts[0].strip(), parts[1].strip()])
+                else:
+                    # If no comma, treat entire line as description with "no" status
+                    print(f"[DEBUG] Line without comma, treating as 'no' status: {line}")
+                    points.append([line, "no"])
         return points
 
     @staticmethod
@@ -127,7 +137,44 @@ class QwenDescriber:
                         wrapped.append(current_line.rstrip())
 
         return wrapped
-
+    def _filter_security_response(self, response_str: str) -> str:
+        """
+        Deterministic local filtering to avoid contradictory lines produced by the LLM.
+        - If any line contains 'not all' (fluorescent lamps not all lit), keep that line and remove any
+          'all fluorescent ...' lines to avoid contradiction.
+        - Normalize any remaining 'all fluorescent' lines to the exact form:
+            "All fluorescent lamps are lit up, no"
+        - Remove lines that indicate "no emergency exit" (they should not appear).
+        - Keep all other lines unchanged.
+        """
+        if not response_str:
+            return ""
+        raw_lines = [l.strip() for l in response_str.splitlines() if l.strip()]
+        if not raw_lines:
+            return ""
+        # Detect presence of an explicit "not all" fluorescent statement
+        has_not_all = any("not all" in l.lower() or "not all lit" in l.lower() for l in raw_lines)
+        out_lines = []
+        for line in raw_lines:
+            low = line.lower()
+            # Drop explicit "no emergency exit" lines
+            if "no emergency exit" in low or "no emergency exit door" in low:
+                continue
+            # If line explicitly states fluorescent lamps are NOT all lit, keep it exactly
+            if "not all" in low or "not all lit" in low:
+                out_lines.append(line)
+                continue
+            # Normalize any "all fluorescent/all lit" statements
+            if ("all fluorescent" in low) or ("all lit" in low) or ("all lit up" in low):
+                # If we already have a "not all" line, skip this contradictory "all" line
+                if has_not_all:
+                    continue
+                out_lines.append("All fluorescent lamps are lit up, no")
+                continue
+            # Keep any other lines unchanged
+            out_lines.append(line)
+        return "\n".join(out_lines)
+    
     def process_and_annotate(self, image_path, output_path=None):
         """
         Process an image and generate annotated version with security observations
@@ -137,47 +184,115 @@ class QwenDescriber:
         Returns:
             Tuple of (points, output_path) where points is list of observations
         """
-        # Get initial security observations
-        self.describer.action(
-            question="you are a security and performing daily surveillance," \
-                     "IMPORTANT:list only 2 or less distinct and unrelated observations in the image, " \
-                     "do not answer in full sentence give very minimal observation description only" \
-                     "do not list an observation if the object is not actually there, " \
-                     "for each observation also show the state whether the observation is dangerous answer yes or no only, " \
-                     "Answer in format: ... , ... with observation coming first and state coming next, " \
-                    #  "check for unlit light and check whether shop gate or door is closed first," \
-                    #  "if lights are properly lit up, do not give lighting observations" \
-                    #  "if doors are closed shut, only give observation if it is an emergency exit" \
-                     "answer in minimal point form only, ",
-            image=image_path
-        )
+        try:
+            print(f"[DEBUG] Starting image processing: {image_path}")
 
-        response = self.describer.response
-        points = self.extract_points(response)
+            # Get initial security observations
+            print("[DEBUG] Step 1: Getting security observations...")
+            # self.describer.action(question="you are a security guard and performing daily surveillance," \
+            #                                "check whether **ALL** fluorescent lamps are lit up if lamp is present" \
+            #                                "check is there a highly visible emergency exit door, if yes is it closed?" \
+            #                                "also get 2 more distinct observations from the image which a security guard should take note of" \
+            #                                "for each observation whether the observation requires immediate handling as yes or no only" \
+            #                                "do not output the above observation thought process" \
+            #                                "Answer in format: ... , ... with observation coming first and state coming next",
+            #                        image=image_path
+            #                    )
+            self.describer.action(
+                question=(
+                    "You are a security guard reviewing the image. Follow instructions exactly and output only the "
+                    "required observations — no explanation, no reasoning, no extra text.\n\n"
+                    "1) Check fluorescent lamps: if any fluorescent lamp is visible, report whether ALL fluorescent lamps are lit. "
+                    "Reminder, each fluorescent lamp in the hallway has 3 tubes, light bulbs in the room has only one "
+                    "If none are visible, state \"No fluorescent lamps visible\".\n"
+                    "2) Check for a clearly visible emergency exit door: if present, report whether it is closed; if none visible, "
+                    "state \"No emergency exit door visible\".\n"
+                    "3) Provide exactly two additional distinct security-relevant observations (e.g., persons, unattended objects, "
+                    "obstructions, water on floor, smoke, broken glass). Do not repeat observations and keep each one short.\n"
+                    "4) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
+                    "5) Output format: four separate lines, each line exactly: <observation>, <yes|no>\n"
+                    "- use minimal phrasing (no full sentences, no labels, no numbering).\n"
+                    "- if an item cannot be determined from the image, use \"Not visible\" as the observation and \"no\" as the state.\n\n"
+                    "Example:\n"
+                    "Fluorescent lamps not all lit, yes\n"
+                    "Emergency exit door closed, no\n"
+                    "Unattended bag by bench, yes\n"
+                    "Wet floor near entrance, yes"
+                ),
+                image=image_path
+            )
 
-        # Check for specific objects
-        self.describer.action(
-            question=f"Are there {self.detection_objects} in the photo?" \
-                     "Example answer format:\n" \
-                     "rubbish, no\n" \
-                     "water puddle, no" \
-                     "smoker , no",
-            image=image_path
-        )
-        obj_detection_list = self.extract_points(self.describer.response)
+            response = self.describer.response
+            print(f"[DEBUG] Initial response: {response}")
 
-        # Add visible objects to points
-        for obj in obj_detection_list:
-            if obj[1].replace(" ", "") == "yes":
-                points.append([f"visible {obj[0]}", "no"])
+            print("[DEBUG] Step 2: Filtering response...")
+            # self.chatter.action(question=f"In the response: {response}," \
+            #                               "if it shows all fluorescent lamps are all lit up, change the following status from yes to no" \
+            #                               "remove the line if it shows there is no emergency exit door" \
+            #                               "only show the final filtered response" \
+            #                               "Example answer format:\n" \
+            #                               "All fluorescent lamps are lit up, no \n" \
+            #                               "robot parked indoor , no",)
+            # self.chatter.action(
+            #     question=(
+            #         f"Filter the following response exactly as described. Response: {response}\n\n"
+            #         "Rules:\n"
+            #         "1) If a line indicates fluorescent lamps are NOT all lit (contains 'not all' or 'not all lit'), keep that line exactly as-is.\n"
+            #         "2) If a line indicates ALL fluorescent lamps are lit (contains phrases like 'all fluorescent', 'all lit', 'all lit up'), output exactly the line: "
+            #         "\"All fluorescent lamps are lit up, no\".\n"
+            #         "3) If a line indicates there is NO emergency exit door visible (contains 'no emergency exit' or 'no emergency exit door visible'), remove that line.\n"
+            #         "4) IMPORTANT: Keep all other lines unchanged\n"
+            #         "5) Output only the final filtered lines together with unchanged lines, one per line, in the format: <observation>, <yes|no>\n\n"
+            #         "Examples:\n"
+            #         "Input line: 'Fluorescent lamps not all lit, yes'  -> keep as 'Fluorescent lamps not all lit, yes'\n"
+            #         "Input line: 'All fluorescent lamps are lit up, yes'  -> output 'All fluorescent lamps are lit up, no'\n"
+            #         "Input line: 'No emergency exit door visible, no'  -> remove this line\n"
+            #     ),
+            # )
+            # points = self.extract_points(self.chatter.response)
+            # points = self.extract_points(response)
+            filtered = self._filter_security_response(response)
+            print(f"[DEBUG] Filtered response:\\n{filtered}")
+            points = self.extract_points(filtered)
+            print(f"[DEBUG] Extracted points after filtering: {points}")
 
-        # Sort points: items with "no" in position [1] come first
-        points.sort(key=lambda x: 0 if x[1].replace(' ', '').lower() == 'no' else 1)
+            print("[DEBUG] Step 3: Checking for specific objects...")
+            # Check for specific objects
+            self.describer.action(
+                question=f"Are there {self.detection_objects} in the photo?" \
+                         "Example answer format:\n" \
+                         "rubbish, no\n" \
+                         "water puddle, no" \
+                         "smoker , no",
+                image=image_path
+            )
+            obj_detection_list = self.extract_points(self.describer.response)
+            print(f"[DEBUG] Object detection results: {obj_detection_list}")
 
-        # Generate annotated image
-        annotated_path = self._annotate_image(image_path, points, output_path)
+            # Add visible objects to points
+            for obj in obj_detection_list:
+                if len(obj) >= 2 and obj[1].replace(" ", "").replace(".","").lower() == "yes":
+                    points.append([f"{obj[0]} detected", "no"])
 
-        return annotated_path
+            # Filter out any malformed points (safety check)
+            points = [p for p in points if len(p) >= 2]
+            print(f"[DEBUG] Total points after filtering: {len(points)}")
+
+            # Sort points: items with "no" in position [1] come first
+            points.sort(key=lambda x: 0 if x[1].replace(' ', '').replace(".","").lower() == 'no' else 1)
+
+            print(f"[DEBUG] Step 4: Generating annotated image with {len(points)} observations...")
+            # Generate annotated image
+            annotated_path = self._annotate_image(image_path, points, output_path)
+
+            print(f"[DEBUG] Successfully completed processing. Output: {annotated_path}")
+            return annotated_path
+
+        except Exception as e:
+            print(f"[ERROR] Failed to process image {image_path}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def _annotate_image(self, image_path, points, output_path=None):
         """
@@ -189,15 +304,24 @@ class QwenDescriber:
         Returns:
             Path to annotated image
         """
+        print(f"[DEBUG] _annotate_image called with {len(points)} points")
+        print(f"[DEBUG] Image path: {image_path}")
+        print(f"[DEBUG] Points: {points}")
+
         # Load the image
+        print(f"[DEBUG] Loading image...")
         if image_path.startswith(('http://', 'https://')):
             import requests
             from io import BytesIO
+            print(f"[DEBUG] Downloading image from URL...")
             response = requests.get(image_path)
+            print(f"[DEBUG] Download complete. Status: {response.status_code}")
             img = Image.open(BytesIO(response.content))
         else:
+            print(f"[DEBUG] Loading local image file...")
             img = Image.open(image_path)
 
+        print(f"[DEBUG] Image loaded. Size: {img.size}")
         draw = ImageDraw.Draw(img)
 
         # Track the vertical position for stacking text boxes
@@ -207,21 +331,21 @@ class QwenDescriber:
         row_max_height = 0
 
         for point in points:
-            is_description_only = point[1].replace(' ', '').lower() == 'no'
+            is_description_only = point[1].replace(" ", "").replace(".","").lower() == 'no'
 
-            if point[1].replace(' ', '') == 'yes':
+            if point[1].replace(" ", "").replace(".","").lower() == 'yes':
                 # For items with suggestions, complete any ongoing description-only row first
                 if description_only_column_count > 0:
                     current_y_position = current_y_position + row_max_height + 80
                     current_x_position = 60
                     description_only_column_count = 0
                     row_max_height = 0
-
+                print("ask_4")
                 self.describer.action(
-                    question=f"give precausion actions suggestions for the problem {point[0]} " \
-                             "response in point form: -... , -..., -... " \
-                             "give minimal description and suggestions only, " \
-                             "give at most 2 suggestion points with minimal information",
+                    question=f"give precaution actions suggestions for the problem {point[0]} " \
+                             "response in minimal point form: -... , -..., -... " \
+                             "give minimal description and suggestions only with no more than 5 words, " \
+                             "give only **1** suggestion point with minimal information",
                     image=image_path
                 )
                 response_text = self.describer.response
@@ -266,6 +390,7 @@ class QwenDescriber:
             # Composite the overlay onto the original image
             img = img.convert('RGBA')
             img = Image.alpha_composite(img, overlay)
+
             draw = ImageDraw.Draw(img)
 
             # Draw the text in white
@@ -335,26 +460,47 @@ class QwenDescriber:
             # Save to output directory
             output_path = str(images_dir / output_filename)
 
+            print(f"[DEBUG] Output path set to: {output_path}")
+            print(f"[DEBUG] Directory exists: {images_dir.exists()}")
+
             # Return path in AI format
             return_path = f"AI/{year}/{month}/{day}/{hour}/images/{output_filename}"
         else:
             return_path = output_path
+            print(f"[DEBUG] Using provided output path: {output_path}")
 
         # Convert back to RGB and save
+        print(f"[DEBUG] Converting image to RGB...")
         img = img.convert('RGB')
-        img.save(output_path)
-        print(f"Image saved to {output_path}")
+        print(f"[DEBUG] Saving image to: {output_path}")
+
+        try:
+            img.save(output_path)
+            print(f"[SUCCESS] Image saved to {output_path}")
+
+            # Verify file was created
+            from pathlib import Path
+            if Path(output_path).exists():
+                file_size = Path(output_path).stat().st_size
+                print(f"[SUCCESS] File verified. Size: {file_size} bytes")
+            else:
+                print(f"[WARNING] File was not created at {output_path}")
+        except Exception as save_error:
+            print(f"[ERROR] Failed to save image: {save_error}")
+            import traceback
+            traceback.print_exc()
+            raise
 
         return return_path
 
 
 if __name__ == "__main__":
     # Example usage of the QwenDescriber class
-    image = "images/lab_1.png"
+    image = "https://hkpic1.aimo.tech/securityClockOut/20251016/as00107/23/20251016233359219-as00107-%E5%8F%B3.jpg"  # Local image path
 
     # Create describer instance with custom detection objects (optional)
     detection_objects = ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
     describer = QwenDescriber(detection_objects=detection_objects)
 
     # Process and annotate the image
-    points, output_path = describer.process_and_annotate(image)
+    output_path = describer.process_and_annotate(image)

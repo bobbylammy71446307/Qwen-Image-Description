@@ -1,15 +1,13 @@
 # Computer Vision and ML
-ultralytics
 opencv-python
 numpy
-torch
-torchvision
 Pillow
 
 # API and Web
 openai
 requests
 flask
+selenium
 
 # Utilities
 pyyaml

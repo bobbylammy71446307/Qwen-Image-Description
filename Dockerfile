@@ -11,6 +11,10 @@ RUN apt-get update && apt-get install -y \
     libgl1 \
     fonts-dejavu-core \
     fontconfig \
+    cron \
+    chromium \
+    chromium-driver \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
@@ -24,10 +28,16 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create necessary directories
-RUN mkdir -p /app/output /app/images /app/models
+RUN mkdir -p /app/output /app/images /app/models /app/logs
+
+# Set up cron permissions
+RUN touch /app/logs/cron.log && chmod 0644 /app/logs/cron.log
 
 # Set environment variables (can be overridden)
 ENV PYTHONUNBUFFERED=1
 
+# Setup cron
+RUN chmod 0644 /etc/cron.d/image-description-cron || true
+
 # Default command (can be overridden in docker-compose or at runtime)
-CMD ["python", "/app/scripts/image_description.py"]
+CMD ["/bin/sh", "-c", "cron && tail -f /app/logs/cron.log"]
