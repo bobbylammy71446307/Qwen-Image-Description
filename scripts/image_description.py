@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 
-import cv2
-import json
 import sys
 import os
 from datetime import datetime, timedelta
-from pathlib import Path
-from ultralytics import YOLO
 import pytz
 import yaml
 import requests
@@ -25,29 +21,6 @@ def post_json_data(json_data, post_url, timeout=10):
         return False
 
 
-def detection(detector, frame, json_tmp, conf_threshold,class_list):
-    results = detector.predict(frame, conf=conf_threshold, verbose=True, classes=class_list)
-    detections,bbox_list = [], []
-    frame_height, frame_width = frame.shape[:2]
-    for result in results:
-        if hasattr(result, 'boxes') and result.boxes is not None:
-            boxes = result.boxes
-            for box in boxes:
-                # Get box coordinates
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                if (x2 - x1) * (y2 - y1) / (frame_height * frame_width) < 0.9:
-                    detections.append({"x1": x1,
-                                       "y1": y1, 
-                                       "x2": x2,
-                                       "y2": y2,
-                                       "width": x2 - x1,
-                                       "height": y2 - y1
-                                       })
-                    bbox_list.append([x1,x2,y1,y2])    
-    json_tmp.update({ "bounding_box": detections })
-    return json_tmp,bbox_list
-
-
 def load_model_config(config_path="./config.yaml"):
     try:
         with open(config_path, 'r') as f:
@@ -57,76 +30,9 @@ def load_model_config(config_path="./config.yaml"):
         print(f"Config file not found: {config_path}")
         sys.exit(1)
     except yaml.YAMLError as e:
-        print(f"Error parsing config file: {e}")
+        print(f"Error parsing config file: {e}")    
+
         sys.exit(1)
-
-
-def get_config(config_type, key, config):
-    config_list = config.get(config_type, {})
-    if key not in config_list:
-        available_models = list(config_list.keys())
-        print(f"Model type '{key}' not found in config.")
-        print(f"Available models: {available_models}")
-        sys.exit(1)
-    return config_list[key]
-
-
-def get_time(tz):
-    now = datetime.now(tz)
-    day = now.strftime('%d')
-    month = now.strftime('%m')
-    year = now.strftime('%Y')
-    hour = now.strftime('%H')
-    return day,month,year,hour
-
-
-def create_output_directories(tz):
-    day, month, year, hour = get_time(tz)
-    base_path="./output"
-
-    # Create directory path
-    dir_path = Path(base_path) / year / month / day / hour
-    dir_path.mkdir(parents=True, exist_ok=True)
-    
-    # Create subdirectories for images and json
-    images_dir = dir_path / "images"
-    images_dir.mkdir(exist_ok=True)
-    output_path = Path("AI") / year / month / day / hour / "images"
-
-    
-    return images_dir, output_path
-
-def rtsp_stream_init(rtsp_url):
-    # Initialize RTSP stream with timeout settings
-    video_cap = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
-    
-    # Optimize buffer settings for low latency and set timeout
-    video_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    video_cap.set(cv2.CAP_PROP_FPS, 15)  # Limit FPS
-    # Set RTSP timeout to 60 seconds (in milliseconds)
-    video_cap.set(cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 60000)
-    video_cap.set(cv2.CAP_PROP_READ_TIMEOUT_MSEC, 60000)
-    # Additional optimizations
-    video_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    video_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    
-    return video_cap
-
-def blur_face(image,frame_count):
-    face_detector = YOLO("./models/face_bounding.pt")
-    results = face_detector.predict(image, conf=0.5, verbose=True)
-    for result in results:
-        if hasattr(result, 'boxes') and result.boxes is not None:
-            boxes = result.boxes
-            for box in boxes:
-                # Get box coordinates
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                # Apply Gaussian blur to the detected face region
-                face_region = image[y1:y2, x1:x2]
-                blurred_face = cv2.GaussianBlur(face_region, (99, 99), 30)
-                image[y1:y2, x1:x2] = blurred_face
-                print(f"Blurred face at frame {frame_count}")
-    return image
 
 def get_robot_pose():
     pose = {"x" : 0,
@@ -140,7 +46,7 @@ def get_robot_pose():
 
 def main():
     # Get robot name from environment variable
-    robot_name = os.getenv('ROBOT_NAME', 'as00214')  # Default to 'as00214' if not set
+    robot_name = os.getenv('ROBOT_NAME', 'as00122')  # Default to 'as00214' if not set
     dept_id = int(os.getenv('DEPT_ID', '10'))  # Default to 10 if not set
     # Get time range from environment variable (in hours, default 12)
     fetch_time_range_hours = int(os.getenv('FETCH_TIME_RANGE_HOURS', '12'))

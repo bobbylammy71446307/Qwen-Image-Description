@@ -145,6 +145,8 @@ class QwenDescriber:
         - Normalize any remaining 'all fluorescent' lines to the exact form:
             "All fluorescent lamps are lit up, no"
         - Remove lines that indicate "no emergency exit" (they should not appear).
+        - Remove lines that start with "no visible" or contain "no visible".
+        - If gate is closed, replace the line with "no".
         - Keep all other lines unchanged.
         """
         if not response_str:
@@ -159,6 +161,13 @@ class QwenDescriber:
             low = line.lower()
             # Drop explicit "no emergency exit" lines
             if "no emergency exit" in low or "no emergency exit door" in low:
+                continue
+            # Drop lines containing "no visible"
+            if "no visible" in low:
+                continue
+            # If gate is closed, replace with "no"
+            if "gate" in low and "closed" in low:
+                out_lines.append("no")
                 continue
             # If line explicitly states fluorescent lamps are NOT all lit, keep it exactly
             if "not all" in low or "not all lit" in low:
@@ -200,17 +209,14 @@ class QwenDescriber:
             #                    )
             self.describer.action(
                 question=(
-                    "You are a security guard reviewing the image. Follow instructions exactly and output only the "
+                    "You are a security guard of a factory reviewing the image. Follow instructions exactly and output only the "
                     "required observations — no explanation, no reasoning, no extra text.\n\n"
-                    "1) Check fluorescent lamps: if any fluorescent lamp is visible, report whether ALL fluorescent lamps are lit. "
-                    "Reminder, each fluorescent lamp in the hallway has 3 tubes, light bulbs in the room has only one "
-                    "If none are visible, state \"No fluorescent lamps visible\".\n"
-                    "2) Check for a clearly visible emergency exit door: if present, report whether it is closed; if none visible, "
-                    "state \"No emergency exit door visible\".\n"
-                    "3) Provide exactly two additional distinct security-relevant observations (e.g., persons, unattended objects, "
+                    "1) Check gate closure status: if any gate is visible, report whether gate is closed. "
+                    "If none are visible, state \"No gate visible\".\n"
+                    "2) Provide exactly two additional distinct security-relevant observations (e.g., persons, "
                     "obstructions, water on floor, smoke, broken glass). Do not repeat observations and keep each one short.\n"
-                    "4) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
-                    "5) Output format: four separate lines, each line exactly: <observation>, <yes|no>\n"
+                    "3) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
+                    "4) Output format: three separate lines, each line exactly: <observation>, <yes|no>\n"
                     "- use minimal phrasing (no full sentences, no labels, no numbering).\n"
                     "- if an item cannot be determined from the image, use \"Not visible\" as the observation and \"no\" as the state.\n\n"
                     "Example:\n"
@@ -226,31 +232,6 @@ class QwenDescriber:
             print(f"[DEBUG] Initial response: {response}")
 
             print("[DEBUG] Step 2: Filtering response...")
-            # self.chatter.action(question=f"In the response: {response}," \
-            #                               "if it shows all fluorescent lamps are all lit up, change the following status from yes to no" \
-            #                               "remove the line if it shows there is no emergency exit door" \
-            #                               "only show the final filtered response" \
-            #                               "Example answer format:\n" \
-            #                               "All fluorescent lamps are lit up, no \n" \
-            #                               "robot parked indoor , no",)
-            # self.chatter.action(
-            #     question=(
-            #         f"Filter the following response exactly as described. Response: {response}\n\n"
-            #         "Rules:\n"
-            #         "1) If a line indicates fluorescent lamps are NOT all lit (contains 'not all' or 'not all lit'), keep that line exactly as-is.\n"
-            #         "2) If a line indicates ALL fluorescent lamps are lit (contains phrases like 'all fluorescent', 'all lit', 'all lit up'), output exactly the line: "
-            #         "\"All fluorescent lamps are lit up, no\".\n"
-            #         "3) If a line indicates there is NO emergency exit door visible (contains 'no emergency exit' or 'no emergency exit door visible'), remove that line.\n"
-            #         "4) IMPORTANT: Keep all other lines unchanged\n"
-            #         "5) Output only the final filtered lines together with unchanged lines, one per line, in the format: <observation>, <yes|no>\n\n"
-            #         "Examples:\n"
-            #         "Input line: 'Fluorescent lamps not all lit, yes'  -> keep as 'Fluorescent lamps not all lit, yes'\n"
-            #         "Input line: 'All fluorescent lamps are lit up, yes'  -> output 'All fluorescent lamps are lit up, no'\n"
-            #         "Input line: 'No emergency exit door visible, no'  -> remove this line\n"
-            #     ),
-            # )
-            # points = self.extract_points(self.chatter.response)
-            # points = self.extract_points(response)
             filtered = self._filter_security_response(response)
             print(f"[DEBUG] Filtered response:\\n{filtered}")
             points = self.extract_points(filtered)
