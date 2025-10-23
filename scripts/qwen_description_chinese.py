@@ -165,15 +165,29 @@ class QwenDescriber_chinese:
 
         # Add Suggestion section
         wrapped.append("建議:")
+        # Clean and validate suggestion text
+        suggestion = suggestion.strip()
+
+        # Filter out placeholder responses
+        if not suggestion or suggestion in ['-...，-...，-...', '-..., -..., -...', '...', '。。。']:
+            suggestion = "請及時處理"
+
         # Wrap suggestion text with bullet points
         suggestion_list = suggestion.split('\n')
         for item in suggestion_list:
             item = item.strip()
-            if item:
+            if item and item not in ['...', '。。。', '-...', '-...,']:
                 # Remove leading dash if present
                 if item.startswith('-'):
                     item = item[1:].strip()
+                # Remove ellipsis patterns
+                if '...' in item and item.count('...') >= 2:
+                    continue
                 wrapped.extend(wrap_chinese_text(item, max_len=max_chars))
+
+        # If no valid suggestions were added, add a default
+        if len(wrapped) == len([w for w in wrapped if w.startswith("描述:")]) + 1:
+            wrapped.extend(wrap_chinese_text("請及時處理", max_len=max_chars))
 
         return wrapped
     def _filter_security_response(self, response_str: str) -> str:
@@ -219,15 +233,6 @@ class QwenDescriber_chinese:
 
             # Get initial security observations
             print("[DEBUG] Step 1: Getting security observations...")
-            # self.describer.action(question="you are a security guard and performing daily surveillance," \
-            #                                "check whether **ALL** fluorescent lamps are lit up if lamp is present" \
-            #                                "check is there a highly visible emergency exit door, if yes is it closed?" \
-            #                                "also get 2 more distinct observations from the image which a security guard should take note of" \
-            #                                "for each observation whether the observation requires immediate handling as yes or no only" \
-            #                                "do not output the above observation thought process" \
-            #                                "Answer in format: ... , ... with observation coming first and state coming next",
-            #                        image=image_path
-            #                    )
             self.describer.action(
                 question=(
                     "你是工廠的保安人員,正在檢查圖像。請嚴格按照指示操作,只輸出所需的觀察結果——不要解釋、不要推理、不要額外文字。\n\n"
@@ -246,11 +251,11 @@ class QwenDescriber_chinese:
             )
 
             response = self.describer.response
-            print(f"[DEBUG] Initial response: {response}")
+            print(f"[DEBUG] Initial response: \n{response}")
 
             print("[DEBUG] Step 2: Filtering response...")
             filtered = self._filter_security_response(response)
-            print(f"[DEBUG] Filtered response:\\n{filtered}")
+            print(f"[DEBUG] Filtered response:\n{filtered}")
             points = self.extract_points(filtered)
             print(f"[DEBUG] Extracted points after filtering: {points}")
 
@@ -310,16 +315,11 @@ class QwenDescriber_chinese:
         Returns:
             Path to annotated image
         """
-        print(f"[DEBUG] _annotate_image called with {len(points)} points")
-        print(f"[DEBUG] Image path: {image_path}")
-        print(f"[DEBUG] Points: {points}")
-
         # Load the image
         print(f"[DEBUG] Loading image...")
         if image_path.startswith(('http://', 'https://')):
             import requests
             from io import BytesIO
-            print(f"[DEBUG] Downloading image from URL...")
             response = requests.get(image_path)
             print(f"[DEBUG] Download complete. Status: {response.status_code}")
             img = Image.open(BytesIO(response.content))
@@ -346,16 +346,33 @@ class QwenDescriber_chinese:
                     current_x_position = 60
                     description_only_column_count = 0
                     row_max_height = 0
-                print("ask_4")
-                self.describer.action(
-                    question=f"針對問題 {point[0]} 給出預防措施建議 " \
-                             "以最簡短的要點形式回答: -... , -..., -... " \
-                             "描述和建議都要簡短,不超過20個字, " \
-                             "只給出**1**條建議要點,信息要最簡短",
-                    image=image_path
-                )
-                response_text = self.describer.response
-                wrapped_lines = self.wrap_text_lines(point[0], response_text, max_chars=25)
+
+                print(f"[DEBUG] Getting suggestion for: {point[0]}")
+                try:
+                    self.describer.action(
+                        question=f"針對問題 {point[0]} 給出具體的預防措施建議。" \
+                                 "要求：只給出1條簡短具體的建議，不要使用佔位符或省略號。" \
+                                 "建議需要針對具體問題，不超過20個字。" \
+                                 "例如：'定期檢查並清理' 或 '安排人員立即清理'",
+                        image=image_path
+                    )
+                    response_text = self.describer.response.strip()
+                    print(f"[DEBUG] Got suggestion response: {response_text}")
+
+                    # Check if response is just placeholders/ellipsis
+                    if not response_text or response_text in ['-...，-...，-...', '-..., -..., -...', '...'] or \
+                       response_text.count('...') >= 2 or response_text.count('。。。') >= 2:
+                        print(f"[WARNING] LLM returned placeholder response, using default")
+                        response_text = "請安排人員及時處理"
+
+                    wrapped_lines = self.wrap_text_lines(point[0], response_text, max_chars=25)
+                except Exception as e:
+                    print(f"[ERROR] Failed to get suggestion: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    # Use a default suggestion if API call fails
+                    response_text = "請及時處理"
+                    wrapped_lines = self.wrap_text_lines(point[0], response_text, max_chars=25)
 
             else:
                 # For description only items, just capitalize first letter if it's a letter

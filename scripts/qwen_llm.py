@@ -156,11 +156,16 @@ class qwen_llm():
 
     def get_full_content(self,completion):
         full_content = ""
-        for chunk in completion:
-            if chunk.choices:
-                choice_deltas = chunk.choices[0].delta
-                if choice_deltas.content:
-                    full_content += choice_deltas.content
+        try:
+            for chunk in completion:
+                if chunk.choices:
+                    choice_deltas = chunk.choices[0].delta
+                    if choice_deltas.content:
+                        full_content += choice_deltas.content
+        except Exception as e:
+            print(f"[ERROR] Error in streaming: {e}")
+            import traceback
+            traceback.print_exc()
         return full_content
     
     def extract_json_from_string(self,text: str) -> str:
@@ -219,29 +224,41 @@ class qwen_llm():
         return annotated_img
 
     def run_model(self, question, image):
-        prompt_message = self.create_prompt(question, image)
-        completion = self.client.chat.completions.create(
-            model="qwen3-omni-flash",# 模型为Qwen3-Omni-Flash时，请关闭思考模式，否则代码会报错
-            messages=prompt_message,
-            modalities=["text"],
-            stream=True,
-            stream_options={"include_usage": True},
-            )
-        response=self.get_full_content(completion)
-        return response
+        try:
+            prompt_message = self.create_prompt(question, image)
+            completion = self.client.chat.completions.create(
+                model="qwen3-omni-flash",
+                messages=prompt_message,
+                modalities=["text"],
+                stream=True,
+                stream_options={"include_usage": True},
+                )
+            response=self.get_full_content(completion)
+            return response
+        except Exception as e:
+            print(f"[ERROR] Model execution error: {e}")
+            import traceback
+            traceback.print_exc()
+            return ""
     
 
     def action(self,question="",image=None):
         if self.mode not in ["chatter","detector","ocr", "image description", "license plate detection"]:
-            print ("Unspecified mode please reinitialize with proper mode")
+            print ("[ERROR] Unspecified mode please reinitialize with proper mode")
             return
-        self.response=self.run_model(question,image)
-        print(self.response)
-        if self.mode == "detector":
-            annotated_image_bytes = self.draw_normalized_bounding_boxes(image, self.response)
-            # Convert bytes back to PIL Image and display
-            annotated_image = PIL_Image.open(BytesIO(annotated_image_bytes))
-            annotated_image.show()
+        try:
+            self.response=self.run_model(question,image)
+            # print(self.response)
+            if self.mode == "detector":
+                annotated_image_bytes = self.draw_normalized_bounding_boxes(image, self.response)
+                # Convert bytes back to PIL Image and display
+                annotated_image = PIL_Image.open(BytesIO(annotated_image_bytes))
+                annotated_image.show()
+        except Exception as e:
+            print(f"[ERROR] Action failed: {e}")
+            import traceback
+            traceback.print_exc()
+            self.response = ""
 
 
 if __name__=="__main__":
