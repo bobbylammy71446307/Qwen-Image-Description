@@ -7,9 +7,9 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - qwen_api=${qwen_api}
-      - ROBOT_NAME=${ROBOT_NAME:-as00122}
+      - ROBOT_NAME=${ROBOT_NAME:-as00107}
       - DEPT_ID=${DEPT_ID:-10}
-      - FETCH_TIME_RANGE_HOURS=${FETCH_TIME_RANGE_HOURS:-12}
+      - FETCH_TIME_RANGE_HOURS=${FETCH_TIME_RANGE_HOURS:-13}
       - API_USERNAME=${API_USERNAME}
       - API_PASSWORD=${API_PASSWORD}
       - API_BASE_URL=${API_BASE_URL:-https://hk1.aimo.tech}
@@ -21,7 +21,7 @@ services:
       - ./images:/app/images
       - ./logs:/app/logs
     working_dir: /app
-    command: ["python", "/app/scripts/image_description.py"]
+    command: ["python", "/app/scripts/image_description_chinese.py"]
     logging:
       driver: "json-file"
       options:

@@ -37,4 +37,4 @@ RUN mkdir -p /app/output /app/images /app/models /app/logs
 ENV PYTHONUNBUFFERED=1
 
 # Default command
-CMD ["python", "/app/scripts/image_description.py"]
+CMD ["python", "/app/scripts/image_description_chinese.py"]
