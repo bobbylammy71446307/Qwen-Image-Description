@@ -14,6 +14,9 @@ RUN apt-get update && apt-get install -y \
     chromium \
     chromium-driver \
     wget \
+    fonts-wqy-zenhei \
+    fonts-noto-cjk \
+    && fc-cache -f -v \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment for chromium to work in container

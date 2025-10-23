@@ -23,57 +23,83 @@ class QwenDescriber_chinese:
 
     def _load_fonts(self):
         """Load fonts for image annotation - Traditional Chinese compatible"""
+        import os
+
         # Try to load Traditional Chinese fonts
         chinese_font_paths = [
             # Traditional Chinese fonts (優先)
-            "/usr/share/fonts/truetype/arphic/uming.ttc",  # AR PL UMing (明體) - Traditional Chinese
-            "/usr/share/fonts/truetype/arphic/ukai.ttc",  # AR PL UKai (楷體) - Traditional Chinese
-            "/usr/share/fonts/opentype/noto/NotoSansTC-Bold.ttf",  # Noto Sans Traditional Chinese
-            "/usr/share/fonts/opentype/noto/NotoSerifTC-Bold.ttf",  # Noto Serif Traditional Chinese
+            "/usr/share/fonts/truetype/arphic/uming.ttc",
+            "/usr/share/fonts/truetype/arphic/ukai.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansTC-Bold.ttf",
+            "/usr/share/fonts/opentype/noto/NotoSerifTC-Bold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSansTC-Bold.ttf",
             "/usr/share/fonts/truetype/noto/NotoSerifTC-Bold.ttf",
             # CJK fonts (support both simplified and traditional)
             "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
             "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
             # WenQuanYi fonts (support both)
             "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
             "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+            # DejaVu (limited Chinese support but widely available)
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            # Liberation fonts
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
             # Fallback fonts
             "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-            "/System/Library/Fonts/PingFang.ttc",  # macOS PingFang TC
-            "C:\\Windows\\Fonts\\msjh.ttc",  # Windows Microsoft JhengHei (正黑體) - Traditional Chinese
-            "C:\\Windows\\Fonts\\mingliu.ttc",  # Windows MingLiU (細明體) - Traditional Chinese
+            "/usr/share/fonts/truetype/droid/DroidSansFallback.ttf",
+            # macOS fonts
+            "/System/Library/Fonts/PingFang.ttc",
+            "/Library/Fonts/Arial Unicode.ttf",
+            # Windows fonts
+            "C:\\Windows\\Fonts\\msjh.ttc",
+            "C:\\Windows\\Fonts\\mingliu.ttc",
+            "C:\\Windows\\Fonts\\simsun.ttc",
+            # Docker common locations
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
         ]
 
         # Try to load header font (bold, larger)
         font_loaded = False
         for font_path in chinese_font_paths:
             try:
-                self.font_header = ImageFont.truetype(font_path, 32)
-                font_loaded = True
-                print(f"[DEBUG] Loaded header font: {font_path}")
-                break
-            except:
+                if os.path.exists(font_path):
+                    self.font_header = ImageFont.truetype(font_path, 32)
+                    font_loaded = True
+                    print(f"[INFO] Loaded header font: {font_path}")
+                    break
+            except Exception:
                 continue
 
         if not font_loaded:
-            print("[WARNING] No Chinese font found for header, using default")
-            self.font_header = ImageFont.load_default()
+            print("[WARNING] No suitable font found for header, using PIL default")
+            print("[INFO] To fix this, install fonts: apt-get install fonts-noto-cjk fonts-wqy-zenhei")
+            try:
+                # Try to use a larger size with default font
+                self.font_header = ImageFont.load_default()
+            except:
+                self.font_header = ImageFont.load_default()
 
         # Try to load body font (regular, smaller)
         font_loaded = False
         for font_path in chinese_font_paths:
             try:
-                self.font_body = ImageFont.truetype(font_path, 26)
-                font_loaded = True
-                print(f"[DEBUG] Loaded body font: {font_path}")
-                break
-            except:
+                if os.path.exists(font_path):
+                    self.font_body = ImageFont.truetype(font_path, 26)
+                    font_loaded = True
+                    print(f"[INFO] Loaded body font: {font_path}")
+                    break
+            except Exception:
                 continue
 
         if not font_loaded:
-            print("[WARNING] No Chinese font found for body, using default")
+            print("[WARNING] No suitable font found for body, using PIL default")
             self.font_body = ImageFont.load_default()
+
 
     @staticmethod
     def extract_points(text):
