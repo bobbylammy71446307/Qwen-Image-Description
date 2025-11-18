@@ -239,8 +239,10 @@ class QwenDescriber_chinese:
         out_lines = []
         for line in raw_lines:
             low = line.lower()
-            # Drop explicit "no emergency exit" lines
             if "沒有可見的門" in low:
+                continue
+            if "門" in low and "關閉" in low:
+                out_lines.append("門已關閉,")
                 continue
             out_lines.append(line)
         return "\n".join(out_lines)

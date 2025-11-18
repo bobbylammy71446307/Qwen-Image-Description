@@ -323,7 +323,6 @@ class QwenDescriber:
                     current_x_position = 60
                     description_only_column_count = 0
                     row_max_height = 0
-                print("ask_4")
                 self.describer.action(
                     question=f"give precaution actions suggestions for the problem {point[0]} " \
                              "response in minimal point form: -... , -..., -... " \
