@@ -1,41 +1,60 @@
 version: '3.8'
 
+x-common-config: &common-config
+  build: .
+  environment:
+    - PYTHONUNBUFFERED=1
+    - qwen_api=${qwen_api}
+    - ROBOT_NAME=${ROBOT_NAME:-as00107}
+    - DEPT_ID=${DEPT_ID:-10}
+    - FETCH_TIME_RANGE_HOURS=${FETCH_TIME_RANGE_HOURS:-13}
+    - API_USERNAME=${API_USERNAME}
+    - API_PASSWORD=${API_PASSWORD}
+    - API_BASE_URL=${API_BASE_URL:-https://bj-robot.aimo.tech/}
+  volumes:
+    - ./models:/app/models:ro
+    - ./scripts:/app/scripts:ro
+    - ./config.yaml:/app/config.yaml:ro
+    - /home/data/pics/AI/:/app/output
+    - ./images:/app/images
+    - ./logs:/app/logs
+  working_dir: /app
+  deploy:
+    resources:
+      limits:
+        memory: 4G
+      reservations:
+        memory: 2G
+  restart: unless-stopped
+  network_mode: "host"
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 services:
-  image-description:
-    build: .
-    container_name: image-description-service
-    environment:
-      - PYTHONUNBUFFERED=1
-      - qwen_api=${qwen_api}
-      - ROBOT_NAME=${ROBOT_NAME:-as00107}
-      - DEPT_ID=${DEPT_ID:-10}
-      - FETCH_TIME_RANGE_HOURS=${FETCH_TIME_RANGE_HOURS:-13}
-      - API_USERNAME=${API_USERNAME}
-      - API_PASSWORD=${API_PASSWORD}
-      - API_BASE_URL=${API_BASE_URL:-https://hk1.aimo.tech}
-    volumes:
-      - ./models:/app/models:ro
-      - ./scripts:/app/scripts:ro
-      - ./config.yaml:/app/config.yaml:ro
-      - /home/data/pics/AI/:/app/output
-      - ./images:/app/images
-      - ./logs:/app/logs
-    working_dir: /app
+  image-description-chinese:
+    <<: *common-config
+    container_name: image-description-chinese-service
     command: ["python", "/app/scripts/image_description_chinese.py"]
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "5"
-        tag: "image-description"
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
-    restart: unless-stopped
-    network_mode: "host"
+        tag: "image-description-chinese"
+
+  image-description-english:
+    <<: *common-config
+    container_name: image-description-english-service
+    command: ["python", "/app/scripts/image_description.py"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "image-description-english"
 
 volumes:
   output:

@@ -39,5 +39,5 @@ RUN mkdir -p /app/output /app/images /app/models /app/logs
 # Set environment variables (can be overridden)
 ENV PYTHONUNBUFFERED=1
 
-# Default command
-CMD ["python", "/app/scripts/image_description_chinese.py"]
+# # Default command
+# CMD ["python", "/app/scripts/image_description_chinese.py"]

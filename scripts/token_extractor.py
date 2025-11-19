@@ -19,7 +19,7 @@ class TokenExtractor:
     Extracts authentication tokens from AIMO web interface
     """
 
-    def __init__(self, base_url="https://hk1.aimo.tech", headless=False):
+    def __init__(self, base_url="https://bj-robot.aimo.tech", headless=False):
         self.base_url = base_url
         self.headless = headless
         self.driver = None
@@ -68,7 +68,7 @@ class TokenExtractor:
                                 'x_token': x_token,
                                 'cookie': cookie,
                                 'url': url,
-                                'host': headers.get('Host', 'hk1.aimo.tech')
+                                'host': headers.get('Host', 'bj-robot.aimo.tech')
                             }
             except Exception as e:
                 continue
@@ -366,7 +366,7 @@ if __name__ == "__main__":
 
     choice = input("\nEnter choice (1/2/3): ").strip()
 
-    extractor = TokenExtractor(base_url="https://hk1.aimo.tech")
+    extractor = TokenExtractor(base_url="https://bj-robot.aimo.tech")
     tokens = None
 
     if choice == "1":

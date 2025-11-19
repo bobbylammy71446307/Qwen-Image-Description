@@ -73,7 +73,7 @@ def get_robot_pose():
 
 def main():
     # Get robot name from environment variable
-    robot_name = os.getenv('ROBOT_NAME', 'as00122')  # Default to 'as00214' if not set
+    robot_name = os.getenv('ROBOT_NAME', 'as00212')  # Default to 'as00214' if not set
     dept_id = int(os.getenv('DEPT_ID', '10'))  # Default to 10 if not set
     # Get time range from environment variable (in hours, default 12)
     fetch_time_range_hours = int(os.getenv('FETCH_TIME_RANGE_HOURS', '12'))
@@ -81,17 +81,17 @@ def main():
     # Get API credentials for automatic token extraction
     api_username = os.getenv('API_USERNAME')
     api_password = os.getenv('API_PASSWORD')
-    api_base_url = os.getenv('API_BASE_URL', 'https://hk1.aimo.tech')
+    api_base_url = os.getenv('API_BASE_URL', 'https://bj-robot.aimo.tech')
 
     print(f"[INFO] Robot name: {robot_name}")
     print(f"[INFO] Department ID: {dept_id}")
     print(f"[INFO] Fetch time range: {fetch_time_range_hours} hour(s)")
     print(f"[INFO] API Base URL: {api_base_url}")
 
-    # Setup auto-extraction credentials if provided
-    auto_extract_credentials = None
+    # Setup credentials if provided
+    credentials = None
     if api_username and api_password:
-        auto_extract_credentials = {
+        credentials = {
             'username': api_username,
             'password': api_password
         }
@@ -105,10 +105,9 @@ def main():
         vin=robot_name,
         dept_id=dept_id,
         page_size=50,
-        auto_refresh_tokens=True,
         token_file='tokens.json',
         base_url=api_base_url,
-        auto_extract_credentials=auto_extract_credentials
+        credentials=credentials  # Fresh tokens will be acquired on initialization
     )
     describer = QwenDescriber()
 
