@@ -7,19 +7,46 @@ class QwenDescriber_chinese:
     Class for generating security surveillance descriptions and annotating images
     """
 
-    def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
-):
+    def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"],
+                 prompt_file="prompt_chinese.txt"):
         """
         Initialize the describer
         Args:
             detection_objects: List of objects to detect (e.g., ["plastic bag", "water puddle"])
+            prompt_file: Path to the prompt file containing the security observation question
         """
         self.describer = qwen_llm("image description")
         self.chatter = qwen_llm("chatter")
         self.detection_objects = detection_objects or ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
+        self.prompt_file = prompt_file
+        self.security_prompt = self._load_prompt()
         self.font_header = None
         self.font_body = None
         self._load_fonts()
+
+    def _load_prompt(self):
+        """Load the security observation prompt from file"""
+        try:
+            with open(self.prompt_file, 'r', encoding='utf-8') as f:
+                prompt = f.read().strip()
+            print(f"[INFO] Loaded prompt from {self.prompt_file}")
+            return prompt
+        except FileNotFoundError:
+            print(f"[WARNING] Prompt file {self.prompt_file} not found, using default prompt")
+            # Default fallback prompt
+            return (
+                "你是工地的安全主管,正在檢查圖像。請嚴格按照指示操作,只輸出所需的觀察結果——不要解釋、不要推理、不要額外文字。\n\n"
+                "2) 提供恰好兩個額外的、不同的、與安全相關的觀察(例如:人員、障礙物、地面積水、煙霧、破碎玻璃)。不要重複觀察,每個觀察保持簡短。\n"
+                "3) 對於每個觀察,附加是否需要立即處理:\"是\"或\"否\"(只能是是/否)。\n"
+                "4) 輸出格式:三行獨立的內容,每行格式為:<觀察>, <是|否>\n"
+                "- 使用最簡短的措辭(不要完整句子,不要標籤,不要編號)。\n"
+                "示例:\n"
+                "長椅旁有無人看管的包, 是\n"
+                "入口處地面潮濕, 是"
+            )
+        except Exception as e:
+            print(f"[ERROR] Failed to load prompt file: {e}")
+            raise
 
     def _load_fonts(self):
         """Load fonts for image annotation - Traditional Chinese compatible"""
@@ -262,19 +289,7 @@ class QwenDescriber_chinese:
             # Get initial security observations
             print("[DEBUG] Step 1: Getting security observations...")
             self.describer.action(
-                question=(
-                    "你是工廠的保安人員,正在檢查圖像。請嚴格按照指示操作,只輸出所需的觀察結果——不要解釋、不要推理、不要額外文字。\n\n"
-                    "1) 檢查門的關閉狀態:如果有可見的門,報告門是否關閉,如果沒有可見的門,說明\"沒有可見的門\"。\n"
-                    "2) 除了門的狀態外,提供恰好兩個額外的、不同的、與安全相關的觀察(例如:人員、障礙物、地面積水、煙霧、破碎玻璃)。不要重複觀察,每個觀察保持簡短。\n"
-                    "3) 對於每個觀察,附加是否需要立即處理:\"是\"或\"否\"(只能是是/否)。\n"
-                    "4) 輸出格式:三行獨立的內容,每行格式為:<觀察>, <是|否>\n"
-                    "- 使用最簡短的措辭(不要完整句子,不要標籤,不要編號)。\n"
-                    "示例:\n"
-                    "螢光燈未全部點亮, 是\n"
-                    "緊急出口門已關閉, 否\n"
-                    "長椅旁有無人看管的包, 是\n"
-                    "入口處地面潮濕, 是"
-                ),
+                question=self.security_prompt,
                 image=image_path
             )
 
@@ -287,6 +302,43 @@ class QwenDescriber_chinese:
             points = self.extract_points(filtered)
             print(f"[DEBUG] Extracted points after filtering: {points}")
 
+            # # Check if helmet detection is needed
+            # helmet_issue_found = False
+            # for point in points:
+            #     if "未佩戴安全帽" in point[0] or "没戴安全帽" in point[0]:
+            #         helmet_issue_found = True
+            #         break
+
+            # # If helmet issue detected, use detector to locate people without helmets
+            base_image = None
+            # if helmet_issue_found:
+            #     print("[DEBUG] Step 2.5: Helmet safety issue detected, running object detection...")
+            #     try:
+            #         # Initialize detector with safety helmet detection
+            #         detector = qwen_llm("detector", detection_list=["未佩戴安全帽人員", "person without safety helmet"])
+
+            #         # Run detection
+            #         detector.action(image=image_path)
+            #         detection_response = detector.response
+
+            #         print(f"[DEBUG] Detection response: {detection_response}")
+
+            #         if detection_response:
+            #             # Draw bounding boxes on the base image
+            #             annotated_img_bytes = detector.draw_normalized_bounding_boxes(image_path, detection_response)
+
+            #             # Convert to PIL Image for further annotation
+            #             from io import BytesIO
+            #             base_image = Image.open(BytesIO(annotated_img_bytes))
+            #             print("[SUCCESS] Bounding boxes drawn for helmet violations")
+            #         else:
+            #             print("[WARNING] No detection response received")
+
+            #     except Exception as e:
+            #         print(f"[ERROR] Failed to detect helmet violations: {e}")
+            #         import traceback
+            #         traceback.print_exc()
+
             print("[DEBUG] Step 3: Checking for specific objects...")
             # Check for specific objects (translate detection objects to Chinese if needed)
             objects_chinese = {
@@ -297,16 +349,23 @@ class QwenDescriber_chinese:
                 "smoker": "吸煙者"
             }
             translated_objects = [objects_chinese.get(obj, obj) for obj in self.detection_objects]
-            self.describer.action(
-                question=f"照片中是否有{translated_objects}?" \
-                         "示例回答格式:\n" \
-                         "垃圾, 否\n" \
-                         "水坑, 否\n" \
-                         "吸煙者, 否",
-                image=image_path
-            )
-            obj_detection_list = self.extract_points(self.describer.response)
-            print(f"[DEBUG] Object detection results: {obj_detection_list}")
+
+            try:
+                print(f"[DEBUG] Checking for objects: {translated_objects}")
+                self.describer.action(
+                    question=f"照片中是否有{translated_objects}?" \
+                             "示例回答格式:\n" \
+                             "垃圾, 否\n" \
+                             "水坑, 否\n" \
+                             "吸煙者, 否",
+                    image=image_path
+                )
+                print(f"[DEBUG] Object detection response received")
+                obj_detection_list = self.extract_points(self.describer.response)
+                print(f"[DEBUG] Object detection results: {obj_detection_list}")
+            except Exception as e:
+                print(f"[WARNING] Object detection failed: {e}")
+                obj_detection_list = []
 
             # Add visible objects to points
             for obj in obj_detection_list:
@@ -321,8 +380,8 @@ class QwenDescriber_chinese:
             points.sort(key=lambda x: 0 if x[1].replace(' ', '').replace(".","").lower() in ['no', '否'] else 1)
 
             print(f"[DEBUG] Step 4: Generating annotated image with {len(points)} observations...")
-            # Generate annotated image
-            annotated_path = self._annotate_image(image_path, points, output_path)
+            # Generate annotated image (pass base_image if it has bounding boxes)
+            annotated_path = self._annotate_image(image_path, points, output_path, base_image=base_image)
 
             print(f"[DEBUG] Successfully completed processing. Output: {annotated_path}")
             return annotated_path
@@ -333,27 +392,32 @@ class QwenDescriber_chinese:
             traceback.print_exc()
             raise
 
-    def _annotate_image(self, image_path, points, output_path=None):
+    def _annotate_image(self, image_path, points, output_path=None, base_image=None):
         """
         Annotate image with observations and suggestions
         Args:
             image_path: Path to input image
             points: List of observation points
             output_path: Optional output path
+            base_image: Pre-loaded PIL Image with bounding boxes (optional)
         Returns:
             Path to annotated image
         """
-        # Load the image
-        print(f"[DEBUG] Loading image...")
-        if image_path.startswith(('http://', 'https://')):
-            import requests
-            from io import BytesIO
-            response = requests.get(image_path)
-            print(f"[DEBUG] Download complete. Status: {response.status_code}")
-            img = Image.open(BytesIO(response.content))
+        # Load the image or use provided base_image
+        if base_image is not None:
+            print(f"[DEBUG] Using provided base image with bounding boxes...")
+            img = base_image
         else:
-            print(f"[DEBUG] Loading local image file...")
-            img = Image.open(image_path)
+            print(f"[DEBUG] Loading image...")
+            if image_path.startswith(('http://', 'https://')):
+                import requests
+                from io import BytesIO
+                response = requests.get(image_path)
+                print(f"[DEBUG] Download complete. Status: {response.status_code}")
+                img = Image.open(BytesIO(response.content))
+            else:
+                print(f"[DEBUG] Loading local image file...")
+                img = Image.open(image_path)
 
         print(f"[DEBUG] Image loaded. Size: {img.size}")
         draw = ImageDraw.Draw(img)
@@ -550,11 +614,12 @@ class QwenDescriber_chinese:
 
 if __name__ == "__main__":
     # Example usage of the QwenDescriber class
-    image = "https://hkpic1.aimo.tech/securityClockOut/20251021/as00107/22/20251021223359650-as00107-%E5%8F%B3.jpg"  # Local image path
-
+    # image = "https://hkpic1.aimo.tech/securityClockOut/20251021/as00107/22/20251021223359650-as00107-%E5%8F%B3.jpg"  # Local image path
+    image = "output/frames/frame_01m42s.jpg"
+    
     # Create describer instance with custom detection objects (optional)
     detection_objects = ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
-    describer = QwenDescriber(detection_objects=detection_objects)
+    describer = QwenDescriber_chinese(detection_objects=detection_objects)
 
     # Process and annotate the image
     output_path = describer.process_and_annotate(image)

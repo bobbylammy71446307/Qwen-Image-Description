@@ -7,19 +7,51 @@ class QwenDescriber:
     Class for generating security surveillance descriptions and annotating images
     """
 
-    def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
-):
+    def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"],
+                 prompt_file="prompt_english.txt"):
         """
         Initialize the describer
         Args:
             detection_objects: List of objects to detect (e.g., ["plastic bag", "water puddle"])
+            prompt_file: Path to the prompt file containing the security observation question
         """
         self.describer = qwen_llm("image description")
         self.chatter = qwen_llm("chatter")
-        self.detection_objects = detection_objects or ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
+        self.detection_objects = detection_objects
+        self.prompt_file = prompt_file
+        self.security_prompt = self._load_prompt()
         self.font_header = None
         self.font_body = None
         self._load_fonts()
+
+    def _load_prompt(self):
+        """Load the security observation prompt from file"""
+        try:
+            with open(self.prompt_file, 'r', encoding='utf-8') as f:
+                prompt = f.read().strip()
+            print(f"[INFO] Loaded prompt from {self.prompt_file}")
+            return prompt
+        except FileNotFoundError:
+            print(f"[WARNING] Prompt file {self.prompt_file} not found, using default prompt")
+            # Default fallback prompt
+            return (
+                "You are a security guard of a factory reviewing the image. Follow instructions exactly and output only the "
+                "required observations — no explanation, no reasoning, no extra text.\n\n"
+                "1) Check gate closure status: if any gate is visible, report whether gate is closed, if none are visible, state \"No gate visible\".\n"
+                "2) Provide exactly two additional distinct security-relevant observations besides gate status (e.g., persons, "
+                "obstructions, water on floor, smoke, broken glass). Do not repeat observations and keep each one short.\n"
+                "3) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
+                "4) Output format: three separate lines, each line exactly: <observation>, <yes|no>\n"
+                "- use minimal phrasing (no full sentences, no labels, no numbering).\n"
+                "Example:\n"
+                "Fluorescent lamps not all lit, yes\n"
+                "Emergency exit door closed, no\n"
+                "Unattended bag by bench, yes\n"
+                "Wet floor near entrance, yes"
+            )
+        except Exception as e:
+            print(f"[ERROR] Failed to load prompt file: {e}")
+            raise
 
     def _load_fonts(self):
         """Load fonts for image annotation"""
@@ -137,56 +169,7 @@ class QwenDescriber:
                         wrapped.append(current_line.rstrip())
 
         return wrapped
-    def _filter_security_response(self, response_str: str) -> str:
-        """
-        Deterministic local filtering to avoid contradictory lines produced by the LLM.
-        - If any line contains 'not all' (fluorescent lamps not all lit), keep that line and remove any
-          'all fluorescent ...' lines to avoid contradiction.
-        - Normalize any remaining 'all fluorescent' lines to the exact form:
-            "All fluorescent lamps are lit up, no"
-        - Remove lines that indicate "no emergency exit" (they should not appear).
-        - Remove lines that contain both "gate" and "visible" together (e.g., "gate not visible", "no gate visible").
-        - Remove lines that contain "no visible" or "not visible".
-        - If gate is closed, replace the line with "no".
-        - Keep all other lines unchanged.
-        """
-        if not response_str:
-            return ""
-        raw_lines = [l.strip() for l in response_str.splitlines() if l.strip()]
-        if not raw_lines:
-            return ""
-        # Detect presence of an explicit "not all" fluorescent statement
-        has_not_all = any("not all" in l.lower() or "not all lit" in l.lower() for l in raw_lines)
-        out_lines = []
-        for line in raw_lines:
-            low = line.lower()
-            # Drop explicit "no emergency exit" lines
-            if "no emergency exit" in low or "no emergency exit door" in low:
-                continue
-            # Drop lines that mention gate visibility (gate not visible, no gate visible, etc.)
-            if "gate" in low and "visible" in low:
-                continue
-            # Drop lines containing "no visible" or "not visible"
-            if "no visible" in low or "not visible" in low:
-                continue
-            # If gate is closed, normalize to "Gate closed, no"
-            if "gate" in low and "closed" in low:
-                out_lines.append("Gate closed, no")
-                continue
-            # If line explicitly states fluorescent lamps are NOT all lit, keep it exactly
-            if "not all" in low or "not all lit" in low:
-                out_lines.append(line)
-                continue
-            # Normalize any "all fluorescent/all lit" statements
-            if ("all fluorescent" in low) or ("all lit" in low) or ("all lit up" in low):
-                # If we already have a "not all" line, skip this contradictory "all" line
-                if has_not_all:
-                    continue
-                out_lines.append("All fluorescent lamps are lit up, no")
-                continue
-            # Keep any other lines unchanged
-            out_lines.append(line)
-        return "\n".join(out_lines)
+
     
     def process_and_annotate(self, image_path, output_path=None):
         """
@@ -202,42 +185,14 @@ class QwenDescriber:
 
             # Get initial security observations
             print("[DEBUG] Step 1: Getting security observations...")
-            # self.describer.action(question="you are a security guard and performing daily surveillance," \
-            #                                "check whether **ALL** fluorescent lamps are lit up if lamp is present" \
-            #                                "check is there a highly visible emergency exit door, if yes is it closed?" \
-            #                                "also get 2 more distinct observations from the image which a security guard should take note of" \
-            #                                "for each observation whether the observation requires immediate handling as yes or no only" \
-            #                                "do not output the above observation thought process" \
-            #                                "Answer in format: ... , ... with observation coming first and state coming next",
-            #                        image=image_path
-            #                    )
             self.describer.action(
-                question=(
-                    "You are a security guard of a factory reviewing the image. Follow instructions exactly and output only the "
-                    "required observations — no explanation, no reasoning, no extra text.\n\n"
-                    "1) Check gate closure status: if any gate is visible, report whether gate is closed, if none are visible, state \"No gate visible\".\n"
-                    "2) Provide exactly two additional distinct security-relevant observations besides gate status (e.g., persons, "
-                    "obstructions, water on floor, smoke, broken glass). Do not repeat observations and keep each one short.\n"
-                    "3) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
-                    "4) Output format: three separate lines, each line exactly: <observation>, <yes|no>\n"
-                    "- use minimal phrasing (no full sentences, no labels, no numbering).\n"
-                    "Example:\n"
-                    "Fluorescent lamps not all lit, yes\n"
-                    "Emergency exit door closed, no\n"
-                    "Unattended bag by bench, yes\n"
-                    "Wet floor near entrance, yes"
-                ),
+                question=self.security_prompt,
                 image=image_path
             )
 
             response = self.describer.response
-            print(f"[DEBUG] Initial response: {response}")
-
-            print("[DEBUG] Step 2: Filtering response...")
-            filtered = self._filter_security_response(response)
-            print(f"[DEBUG] Filtered response:\\n{filtered}")
-            points = self.extract_points(filtered)
-            print(f"[DEBUG] Extracted points after filtering: {points}")
+            points = self.extract_points(response)
+            print(f"[DEBUG] Extracted points: {points}")
 
             print("[DEBUG] Step 3: Checking for specific objects...")
             # Check for specific objects
@@ -287,10 +242,6 @@ class QwenDescriber:
         Returns:
             Path to annotated image
         """
-        print(f"[DEBUG] _annotate_image called with {len(points)} points")
-        print(f"[DEBUG] Image path: {image_path}")
-        print(f"[DEBUG] Points: {points}")
-
         # Load the image
         print(f"[DEBUG] Loading image...")
         if image_path.startswith(('http://', 'https://')):
@@ -477,12 +428,12 @@ class QwenDescriber:
 
 
 if __name__ == "__main__":
-    # Example usage of the QwenDescriber class
-    image = "https://hkpic1.aimo.tech/securityClockOut/20251020/as00122/06/20251020060315303-as00122-右.jpg"  # Local image path
+    # # Example usage of the QwenDescriber class
+    # image = "https://hkpic1.aimo.tech/securityClockOut/20251020/as00122/06/20251020060315303-as00122-右.jpg"  # Local image path
 
-    # Create describer instance with custom detection objects (optional)
-    detection_objects = ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
-    describer = QwenDescriber(detection_objects=detection_objects)
+    # # Create describer instance with custom detection objects (optional)
+    # detection_objects = ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
+    # describer = QwenDescriber(detection_objects=detection_objects)
 
-    # Process and annotate the image
-    output_path = describer.process_and_annotate(image)
+    # # Process and annotate the image
+    # output_path = describer.process_and_annotate(image)

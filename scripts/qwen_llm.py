@@ -293,26 +293,27 @@ if __name__=="__main__":
     # talker=qwen_llm("license plate detection")
     # talker.action(image=image)
 
-    # image="images/lab_2.png"
+    # image="image_copy.png"
     # describer=qwen_llm("image description")
-    # # duty_list = ["broken and faulty light bulbs", "unshut emergency doors", "shop doors stats"]
-    # # describer.action(question=f"you are a security and performing daily surveillance," \
-    # #                            "your duty is to check whether there are {duty_list}" \
-    # #                            "IMPORTANT:list only 2 or less distinct and unrelated observations in the image, " \
-    # #                            "do not answer in full sentence give very minimal observation description only" \
-    # #                     #   "IMPORTANT: only list observations of objects that are clearly visible and present in the image, " \
-    # #                     #   "do not list an observation if the object is not actually there, " \
-    # #                       "for each observation also show the state whether it is urgent, answer yes or no only, " \
-    # #                       "Answer in format: ... , ... with observation coming first and state coming next, " \
-    # #                       "check for unlit light and check whether shop gate or door is closed first," \
-    # #                     #   "if lights are properly lit up, do not give lighting observations" \
-    # #                     #   "if doors are closed shut, only give observation if it is an emergency exit"
-    # #                       "answer in minimal point form only, ",
-    # #                     #   "Example answer format:\n" \
-    # #                     #   "Light not fully on, yes\n" \
-    # #                     #   "Door open, yes",
-    # #                       image=image)
-    # describer.action(question="Are there unlit light bulbs in the photo?",image=image)
+    # detector = qwen_llm("detector", detection_list=["person not wearing safety helmet on their head"])
+    # describer.action(question=(
+    #     "你是工地安全檢查員。你的任務是找出**沒有**佩戴安全帽的人。\n\n"
+    #     "安全帽識別標準：\n"
+    #     "- 安全帽是**堅硬的頭盔**（通常是黃色、白色、紅色或藍色）\n"
+    #     "- 普通帽子、鴨舌帽、布帽**不是**安全帽\n"
+    #     "- 如果頭上什麼都沒戴，或只戴了普通帽子 = **未佩戴安全帽**\n\n"
+    #     "檢查任務：\n"
+    #     "請仔細觀察圖片中**每一個人的頭部**。\n"
+    #     "找出所有**沒有佩戴硬質頭盔**的人。\n\n"
+    #     "回答要求：\n"
+    #     "- 如果發現有人**沒戴**安全帽（硬質頭盔），回答：\"有人未佩戴安全帽\"，並具體說明是哪一個人（位置、穿著特徵）\n"
+    #     "- 只有當**每個人**頭上都有硬質頭盔時，才回答：\"所有人都佩戴安全帽\"\n"
+    #     "- 有疑問時，請傾向於報告\"有人未佩戴安全帽\"\n\n"
+    #     "現在請檢查圖片並給出答案："
+    # ), image=image)
+    # print(describer.response)
+
     chatter = qwen_llm("chatter")
-    question = "Create a prompt input to qwen3-omni "
+    question = "停車場的保安人員,關於停車場環境請列出兩項你需要注意的事項 "
     chatter.action(question=question)
+    print(chatter.response)
