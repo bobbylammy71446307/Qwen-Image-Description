@@ -7,7 +7,7 @@ class QwenDescriber_chinese:
     Class for generating security surveillance descriptions and annotating images
     """
 
-    def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"],
+    def __init__(self, detection_objects= ["pets", "plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"],
                  prompt_file="prompt_chinese.txt"):
         """
         Initialize the describer
@@ -17,7 +17,7 @@ class QwenDescriber_chinese:
         """
         self.describer = qwen_llm("image description")
         self.chatter = qwen_llm("chatter")
-        self.detection_objects = detection_objects or ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
+        self.detection_objects = detection_objects
         self.prompt_file = prompt_file
         self.security_prompt = self._load_prompt()
         self.font_header = None
@@ -342,6 +342,7 @@ class QwenDescriber_chinese:
             print("[DEBUG] Step 3: Checking for specific objects...")
             # Check for specific objects (translate detection objects to Chinese if needed)
             objects_chinese = {
+            	"pets": "寵物",
                 "plastic bag": "塑膠袋",
                 "plastic bottle": "塑膠瓶",
                 "cardboard": "紙板",

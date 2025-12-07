@@ -437,3 +437,4 @@ if __name__ == "__main__":
 
     # # Process and annotate the image
     # output_path = describer.process_and_annotate(image)
+    pass

@@ -6,7 +6,49 @@ import argparse
 from pathlib import Path
 from datetime import datetime
 import pytz
+import yaml
+import requests
 from qwen_description_chinese import QwenDescriber_chinese
+
+
+def load_config(config_path="./config.yaml"):
+    """Load configuration from YAML file"""
+    try:
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f)
+        return config
+    except FileNotFoundError:
+        print(f"[WARNING] Config file not found: {config_path}")
+        return {}
+    except yaml.YAMLError as e:
+        print(f"[WARNING] Error parsing config file: {e}")
+        return {}
+
+
+def post_json_data(json_data, post_url, timeout=10):
+    """Post JSON data to server"""
+    try:
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(post_url, json=json_data, headers=headers, timeout=timeout)
+        response.raise_for_status()
+        print(f"[SUCCESS] Posted data to {post_url}")
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"[ERROR] Failed to post data to {post_url}: {e}")
+        return False
+
+
+def get_robot_pose():
+    """Get robot pose (placeholder)"""
+    pose = {
+        "x": 0,
+        "y": 0,
+        "z": 0,
+        "r": 0,
+        "p": 0,
+        "y": 0
+    }
+    return pose
 
 
 def get_image_files(input_path):
@@ -67,11 +109,20 @@ Examples:
   # Process with custom output directory
   python image_description_chinese_local.py input.jpg -o results/
 
+  # Process and post to server after each image
+  python image_description_chinese_local.py images/ --post-to-server
+
+  # Process with custom robot and camera names
+  python image_description_chinese_local.py images/ --post-to-server --robot-name as00212 --camera-name front_camera
+
   # Process with custom detection objects
   python image_description_chinese_local.py input.jpg -d "塑膠袋" "煙頭" "積水"
 
   # Use custom prompt file
   python image_description_chinese_local.py input.jpg -p custom_prompt.txt
+
+  # Enable verbose mode
+  python image_description_chinese_local.py images/ -v --post-to-server
         """
     )
 
@@ -105,7 +156,37 @@ Examples:
         help='Enable verbose output'
     )
 
+    parser.add_argument(
+        '--post-to-server',
+        action='store_true',
+        help='Post results to server after each image is processed'
+    )
+
+    parser.add_argument(
+        '--robot-name',
+        help='Robot name for posting to server (default: from ROBOT_NAME env or "local")',
+        default=os.getenv('ROBOT_NAME', 'local')
+    )
+
+    parser.add_argument(
+        '--camera-name',
+        help='Camera name for posting to server (default: "front_camera")',
+        default='front_camera'
+    )
+
+    parser.add_argument(
+        '--config',
+        help='Path to config file (default: ./config.yaml)',
+        default='./config.yaml'
+    )
+
     args = parser.parse_args()
+
+    # Load configuration
+    config = load_config(args.config)
+    api_config = config.get("api", {})
+    post_endpoint = api_config.get("post_endpoint", "http://post-server:8080/api/detections")
+    api_timeout = api_config.get("timeout", 10)
 
     # Get list of image files to process
     image_files = get_image_files(args.input)
@@ -118,6 +199,10 @@ Examples:
     if args.verbose:
         print(f"[INFO] Detection objects: {args.detection_objects}")
         print(f"[INFO] Prompt file: {args.prompt_file}")
+        if args.post_to_server:
+            print(f"[INFO] Will post to server: {post_endpoint}")
+            print(f"[INFO] Robot name: {args.robot_name}")
+            print(f"[INFO] Camera name: {args.camera_name}")
 
     # Initialize describer
     try:
@@ -132,7 +217,11 @@ Examples:
     # Process each image
     processed_count = 0
     failed_count = 0
+    posted_count = 0
     output_paths = []
+
+    # Get timezone for timestamps
+    hong_kong_tz = pytz.timezone('Asia/Hong_Kong')
 
     for idx, image_path in enumerate(image_files, 1):
         try:
@@ -163,6 +252,24 @@ Examples:
             processed_count += 1
             print(f"[SUCCESS] Annotated image saved to: {result_path}")
 
+            # Post to server if enabled
+            if args.post_to_server:
+                current_time = datetime.now(hong_kong_tz)
+                post_data = {
+                    "model_type": "ai_description",
+                    "time": current_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "robot": args.robot_name,
+                    "camera": args.camera_name,
+                    "pose": get_robot_pose(),
+                    "image_path": [result_path]
+                }
+
+                if post_json_data(post_data, post_endpoint, timeout=api_timeout):
+                    posted_count += 1
+                    print(f"[SUCCESS] Posted result to server")
+                else:
+                    print(f"[WARNING] Failed to post result to server")
+
         except Exception as e:
             print(f"[ERROR] Failed to process {image_path}: {e}")
             if args.verbose:
@@ -177,6 +284,8 @@ Examples:
     print(f"Total images: {len(image_files)}")
     print(f"Successfully processed: {processed_count}")
     print(f"Failed: {failed_count}")
+    if args.post_to_server:
+        print(f"Posted to server: {posted_count}/{processed_count}")
 
     if output_paths:
         print(f"\nOutput files:")
