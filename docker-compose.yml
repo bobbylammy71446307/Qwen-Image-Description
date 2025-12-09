@@ -94,5 +94,39 @@ services:
         max-file: "5"
         tag: "image-description-as00122"
 
+  image-description-as00101:
+    <<: *common-config
+    container_name: image-description-as00101
+    environment:
+      - ROBOT_NAME=as00101
+      - API_BASE_URL=https://hk1.aimo.tech/
+      - API_USERNAME=${API_USERNAME_HK}
+      - API_PASSWORD=${API_PASSWORD_HK}
+      - LANGUAGE=chinese
+    command: ["python", "/app/scripts/image_description.py"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "image-description-as00101"
+
+  image-description-as00119:
+    <<: *common-config
+    container_name: image-description-as00119
+    environment:
+      - ROBOT_NAME=as00119
+      - API_BASE_URL=https://hk1.aimo.tech/
+      - API_USERNAME=${API_USERNAME_HK}
+      - API_PASSWORD=${API_PASSWORD_HK}
+      - LANGUAGE=chinese
+    command: ["python", "/app/scripts/image_description.py"]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+        tag: "image-description-as00119"
+
 volumes:
   output:
