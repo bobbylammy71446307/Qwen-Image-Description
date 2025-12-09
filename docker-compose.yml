@@ -1,13 +1,14 @@
 version: '3.8'
 
+# Common environment variables shared across all services
+x-common-env: &common-env
+  PYTHONUNBUFFERED: 1
+  qwen_api: ${qwen_api}
+  DEPT_ID: ${DEPT_ID:-10}
+  FETCH_TIME_RANGE_HOURS: ${FETCH_TIME_RANGE_HOURS:-24}
+
 x-common-config: &common-config
   image: img_description:${IMAGE_TAG:-latest}
-  environment:
-    - PYTHONUNBUFFERED=1
-    - qwen_api=${qwen_api}
-    - DEPT_ID=${DEPT_ID:-10}
-    - FETCH_TIME_RANGE_HOURS=${FETCH_TIME_RANGE_HOURS:-24}
-
   volumes:
     - ./models:/app/models:ro
     - ./scripts:/app/scripts:ro
@@ -47,11 +48,12 @@ services:
     <<: *common-config
     container_name: image-description-as00213
     environment:
-      - ROBOT_NAME=as00213
-      - API_BASE_URL=https://hk1.aimo.tech/
-      - API_USERNAME=${API_USERNAME_HK}
-      - API_PASSWORD=${API_PASSWORD_HK}
-      - LANGUAGE=english
+      <<: *common-env
+      ROBOT_NAME: as00213
+      API_BASE_URL: https://hk1.aimo.tech/
+      API_USERNAME: ${API_USERNAME_HK}
+      API_PASSWORD: ${API_PASSWORD_HK}
+      LANGUAGE: english
     command: ["python", "/app/scripts/image_description.py"]
     logging:
       driver: "json-file"
@@ -64,11 +66,12 @@ services:
     <<: *common-config
     container_name: image-description-as00107
     environment:
-      - ROBOT_NAME=as00107
-      - API_BASE_URL=https://hk1.aimo.tech/
-      - API_USERNAME=${API_USERNAME_HK}
-      - API_PASSWORD=${API_PASSWORD_HK}
-      - LANGUAGE=chinese
+      <<: *common-env
+      ROBOT_NAME: as00107
+      API_BASE_URL: https://hk1.aimo.tech/
+      API_USERNAME: ${API_USERNAME_HK}
+      API_PASSWORD: ${API_PASSWORD_HK}
+      LANGUAGE: chinese
     command: ["python", "/app/scripts/image_description.py"]
     logging:
       driver: "json-file"
@@ -81,11 +84,12 @@ services:
     <<: *common-config
     container_name: image-description-as00122
     environment:
-      - ROBOT_NAME=as00122
-      - API_BASE_URL=https://hk1.aimo.tech/
-      - API_USERNAME=${API_USERNAME_HK}
-      - API_PASSWORD=${API_PASSWORD_HK}
-      - LANGUAGE=chinese
+      <<: *common-env
+      ROBOT_NAME: as00122
+      API_BASE_URL: https://hk1.aimo.tech/
+      API_USERNAME: ${API_USERNAME_HK}
+      API_PASSWORD: ${API_PASSWORD_HK}
+      LANGUAGE: chinese
     command: ["python", "/app/scripts/image_description.py"]
     logging:
       driver: "json-file"
@@ -98,11 +102,12 @@ services:
     <<: *common-config
     container_name: image-description-as00101
     environment:
-      - ROBOT_NAME=as00101
-      - API_BASE_URL=https://hk1.aimo.tech/
-      - API_USERNAME=${API_USERNAME_HK}
-      - API_PASSWORD=${API_PASSWORD_HK}
-      - LANGUAGE=chinese
+      <<: *common-env
+      ROBOT_NAME: as00101
+      API_BASE_URL: https://hk1.aimo.tech/
+      API_USERNAME: ${API_USERNAME_HK}
+      API_PASSWORD: ${API_PASSWORD_HK}
+      LANGUAGE: chinese
     command: ["python", "/app/scripts/image_description.py"]
     logging:
       driver: "json-file"
@@ -115,11 +120,12 @@ services:
     <<: *common-config
     container_name: image-description-as00119
     environment:
-      - ROBOT_NAME=as00119
-      - API_BASE_URL=https://hk1.aimo.tech/
-      - API_USERNAME=${API_USERNAME_HK}
-      - API_PASSWORD=${API_PASSWORD_HK}
-      - LANGUAGE=chinese
+      <<: *common-env
+      ROBOT_NAME: as00119
+      API_BASE_URL: https://hk1.aimo.tech/
+      API_USERNAME: ${API_USERNAME_HK}
+      API_PASSWORD: ${API_PASSWORD_HK}
+      LANGUAGE: chinese
     command: ["python", "/app/scripts/image_description.py"]
     logging:
       driver: "json-file"
