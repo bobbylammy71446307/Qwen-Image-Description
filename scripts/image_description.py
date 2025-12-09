@@ -78,6 +78,9 @@ def main():
     # Get time range from environment variable (in hours, default 12)
     fetch_time_range_hours = int(os.getenv('FETCH_TIME_RANGE_HOURS', '12'))
 
+    # Get language setting from environment variable (english or chinese)
+    language = os.getenv('LANGUAGE', 'english').lower()
+
     # Get API credentials for automatic token extraction
     api_username = os.getenv('API_USERNAME')
     api_password = os.getenv('API_PASSWORD')
@@ -87,6 +90,7 @@ def main():
     print(f"[INFO] Department ID: {dept_id}")
     print(f"[INFO] Fetch time range: {fetch_time_range_hours} hour(s)")
     print(f"[INFO] API Base URL: {api_base_url}")
+    print(f"[INFO] Language: {language}")
 
     # Setup credentials if provided
     credentials = None
@@ -109,7 +113,14 @@ def main():
         base_url=api_base_url,
         credentials=credentials  # Fresh tokens will be acquired on initialization
     )
-    describer = QwenDescriber()
+
+    # Initialize unified describer with language setting
+    if language == 'chinese':
+        print("[INFO] Using Chinese mode with prompt_chinese.txt")
+        describer = QwenDescriber(prompt_file='prompt_chinese.txt', language='chinese')
+    else:
+        print("[INFO] Using English mode with prompt_english.txt")
+        describer = QwenDescriber(prompt_file='prompt_english.txt', language='english')
 
     # Load configuration
     config = load_model_config()

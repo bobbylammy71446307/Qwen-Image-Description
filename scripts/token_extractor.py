@@ -5,6 +5,7 @@ Extracts X-Token and Cookie from browser session using Selenium
 
 import time
 import json
+import os
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -19,7 +20,10 @@ class TokenExtractor:
     Extracts authentication tokens from AIMO web interface
     """
 
-    def __init__(self, base_url="https://hk1.aimo.tech", headless=False):
+    def __init__(self, base_url=None, headless=False):
+        # Use environment variable if base_url not provided
+        if base_url is None:
+            base_url = os.getenv('API_BASE_URL', 'https://hk1.aimo.tech')
         self.base_url = base_url
         self.headless = headless
         self.driver = None

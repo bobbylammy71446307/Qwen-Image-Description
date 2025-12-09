@@ -5,20 +5,23 @@ from PIL import Image, ImageDraw, ImageFont
 class QwenDescriber:
     """
     Class for generating security surveillance descriptions and annotating images
+    Supports both English and Chinese languages
     """
 
     def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"],
-                 prompt_file="prompt_english.txt"):
+                 prompt_file="prompt_english.txt", language="english"):
         """
         Initialize the describer
         Args:
             detection_objects: List of objects to detect (e.g., ["plastic bag", "water puddle"])
             prompt_file: Path to the prompt file containing the security observation question
+            language: "english" or "chinese" (determines fonts and text handling)
         """
         self.describer = qwen_llm("image description")
         self.chatter = qwen_llm("chatter")
         self.detection_objects = detection_objects
         self.prompt_file = prompt_file
+        self.language = language.lower()
         self.security_prompt = self._load_prompt()
         self.font_header = None
         self.font_body = None
@@ -32,52 +35,69 @@ class QwenDescriber:
             print(f"[INFO] Loaded prompt from {self.prompt_file}")
             return prompt
         except FileNotFoundError:
-            print(f"[WARNING] Prompt file {self.prompt_file} not found, using default prompt")
-            # Default fallback prompt
-            return (
-                "You are a security guard of a factory reviewing the image. Follow instructions exactly and output only the "
-                "required observations — no explanation, no reasoning, no extra text.\n\n"
-                "1) Check gate closure status: if any gate is visible, report whether gate is closed, if none are visible, state \"No gate visible\".\n"
-                "2) Provide exactly two additional distinct security-relevant observations besides gate status (e.g., persons, "
-                "obstructions, water on floor, smoke, broken glass). Do not repeat observations and keep each one short.\n"
-                "3) For every observation, append whether it requires immediate handling: \"yes\" or \"no\" (only yes/no).\n"
-                "4) Output format: three separate lines, each line exactly: <observation>, <yes|no>\n"
-                "- use minimal phrasing (no full sentences, no labels, no numbering).\n"
-                "Example:\n"
-                "Fluorescent lamps not all lit, yes\n"
-                "Emergency exit door closed, no\n"
-                "Unattended bag by bench, yes\n"
-                "Wet floor near entrance, yes"
-            )
+            print(f"[WARNING] Prompt file {self.prompt_file} not found, using empty prompt")
+            return ""
         except Exception as e:
             print(f"[ERROR] Failed to load prompt file: {e}")
             raise
 
     def _load_fonts(self):
         """Load fonts for image annotation"""
-        # Try to load header font
-        try:
-            self.font_header = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/Trebuchet_MS_Bold.ttf", 32)
-        except:
-            try:
-                self.font_header = ImageFont.truetype("trebucbd.ttf", 32)
-            except:
-                try:
-                    self.font_header = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/trebucbd.ttf", 32)
-                except:
-                    self.font_header = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+        import os
 
-        # Try to load body font
-        try:
-            self.font_body = ImageFont.truetype("/usr/share/fonts/truetype/Fjord.ttf", 28)
-        except:
+        if self.language == "chinese":
+            # Load Chinese-compatible fonts
+            chinese_font_paths = [
+                # Traditional Chinese fonts
+                "/usr/share/fonts/truetype/arphic/uming.ttc",
+                "/usr/share/fonts/truetype/arphic/ukai.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansTC-Bold.ttf",
+                "/usr/share/fonts/truetype/noto/NotoSansTC-Bold.ttf",
+                # CJK fonts
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+                # WenQuanYi fonts
+                "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+                "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+                # Fallback
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            ]
+
+            font_loaded = False
+            for font_path in chinese_font_paths:
+                try:
+                    if os.path.exists(font_path):
+                        self.font_header = ImageFont.truetype(font_path, 32)
+                        self.font_body = ImageFont.truetype(font_path, 26)
+                        font_loaded = True
+                        print(f"[INFO] Loaded Chinese fonts: {font_path}")
+                        break
+                except Exception:
+                    continue
+
+            if not font_loaded:
+                print("[WARNING] No suitable Chinese font found, using PIL default")
+                print("[INFO] To fix this, install fonts: apt-get install fonts-noto-cjk fonts-wqy-zenhei")
+                self.font_header = ImageFont.load_default()
+                self.font_body = ImageFont.load_default()
+        else:
+            # Load English fonts
             try:
-                self.font_body = ImageFont.truetype("Fjord.ttf", 28)
+                self.font_header = ImageFont.truetype("/usr/share/fonts/truetype/msttcorefonts/Trebuchet_MS_Bold.ttf", 32)
             except:
                 try:
-                    self.font_body = ImageFont.truetype("FjordOne-Regular.ttf", 28)
+                    self.font_header = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
                 except:
+                    self.font_header = ImageFont.load_default()
+
+            try:
+                self.font_body = ImageFont.truetype("/usr/share/fonts/truetype/Fjord.ttf", 28)
+            except:
+                try:
                     self.font_body = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 28)
+                except:
+                    self.font_body = ImageFont.load_default()
 
     @staticmethod
     def extract_points(text):
@@ -98,25 +118,34 @@ class QwenDescriber:
         return points
 
     @staticmethod
-    def wrap_text_lines(description, suggestion, max_chars=60):
+    def wrap_text_lines(description, suggestion, max_chars=60, language="english"):
         """
         Create formatted text lines with description and suggestion
         Args:
             description: Description text
             suggestion: Suggestion text
             max_chars: Maximum characters per line for wrapping
+            language: "english" or "chinese"
         Returns:
             Array: ["Description:", "- (description text)", "Suggestion:", "- (suggestion text)"]
         """
+        # Adjust max_chars for Chinese (characters are wider)
+        if language == "chinese":
+            max_chars = 30
+
         wrapped = []
 
+        # Headers based on language
+        desc_header = "描述:" if language == "chinese" else "Description:"
+        sugg_header = "建議:" if language == "chinese" else "Suggestion:"
+
         # Add Description section
-        wrapped.append("Description:")
+        wrapped.append(desc_header)
         # Wrap description text with bullet point
         if description:
-            # Capitalize first letter of description
+            # Capitalize first letter of description (English only)
             description = description.strip()
-            if description:
+            if description and language == "english":
                 description = description[0].upper() + description[1:]
             words = description.split()
             current_line = "- "
@@ -132,7 +161,7 @@ class QwenDescriber:
                 wrapped.append(current_line.rstrip())
 
         # Add Suggestion section
-        wrapped.append("Suggestion:")
+        wrapped.append(sugg_header)
         # Wrap suggestion text with bullet points
         suggestion_list = suggestion.split('\n')
         for item in suggestion_list:
@@ -170,7 +199,7 @@ class QwenDescriber:
 
         return wrapped
 
-    
+
     def process_and_annotate(self, image_path, output_path=None):
         """
         Process an image and generate annotated version with security observations
@@ -195,29 +224,45 @@ class QwenDescriber:
             print(f"[DEBUG] Extracted points: {points}")
 
             print("[DEBUG] Step 3: Checking for specific objects...")
+            # Translate detection objects to Chinese if needed
+            if self.language == "chinese":
+                objects_chinese = {
+                    "pets": "寵物",
+                    "plastic bag": "塑膠袋",
+                    "plastic bottle": "塑膠瓶",
+                    "cardboard": "紙板",
+                    "water puddle": "水坑",
+                    "smoker": "吸煙者"
+                }
+                translated_objects = [objects_chinese.get(obj, obj) for obj in self.detection_objects]
+                question = f"照片中是否有{translated_objects}?示例回答格式:\n垃圾, 否\n水坑, 否\n吸煙者, 否"
+            else:
+                question = f"Are there {self.detection_objects} in the photo?Example answer format:\nrubbish, no\nwater puddle, no\nsmoker , no"
+
             # Check for specific objects
             self.describer.action(
-                question=f"Are there {self.detection_objects} in the photo?" \
-                         "Example answer format:\n" \
-                         "rubbish, no\n" \
-                         "water puddle, no" \
-                         "smoker , no",
+                question=question,
                 image=image_path
             )
             obj_detection_list = self.extract_points(self.describer.response)
             print(f"[DEBUG] Object detection results: {obj_detection_list}")
 
             # Add visible objects to points
+            yes_values = ["yes", "是"] if self.language == "chinese" else ["yes"]
             for obj in obj_detection_list:
-                if len(obj) >= 2 and obj[1].replace(" ", "").replace(".","").lower() == "yes":
-                    points.append([f"{obj[0]} detected", "no"])
+                if len(obj) >= 2 and obj[1].replace(" ", "").replace(".","").lower() in yes_values:
+                    if self.language == "chinese":
+                        points.append([f"檢測到{obj[0]}", "否"])
+                    else:
+                        points.append([f"{obj[0]} detected", "no"])
 
             # Filter out any malformed points (safety check)
             points = [p for p in points if len(p) >= 2]
             print(f"[DEBUG] Total points after filtering: {len(points)}")
 
-            # Sort points: items with "no" in position [1] come first
-            points.sort(key=lambda x: 0 if x[1].replace(' ', '').replace(".","").lower() == 'no' else 1)
+            # Sort points: items with "no"/"否" in position [1] come first
+            no_values = ['no', '否'] if self.language == "chinese" else ['no']
+            points.sort(key=lambda x: 0 if x[1].replace(' ', '').replace(".","").lower() in no_values else 1)
 
             print(f"[DEBUG] Step 4: Generating annotated image with {len(points)} observations...")
             # Generate annotated image
@@ -264,29 +309,40 @@ class QwenDescriber:
         description_only_column_count = 0
         row_max_height = 0
 
-        for point in points:
-            is_description_only = point[1].replace(" ", "").replace(".","").lower() == 'no'
+        # Define no/yes values based on language
+        no_values = ['no', '否']
+        yes_values = ['yes', '是']
 
-            if point[1].replace(" ", "").replace(".","").lower() == 'yes':
+        for point in points:
+            is_description_only = point[1].replace(" ", "").replace(".","").lower() in no_values
+
+            if point[1].replace(" ", "").replace(".","").lower() in yes_values:
                 # For items with suggestions, complete any ongoing description-only row first
                 if description_only_column_count > 0:
                     current_y_position = current_y_position + row_max_height + 80
                     current_x_position = 60
                     description_only_column_count = 0
                     row_max_height = 0
+
+                # Generate suggestion based on language
+                if self.language == "chinese":
+                    suggestion_question = f"對於問題 {point[0]} 給出預防措施建議,以最少的點形式回應: -... , -..., -... 給出最少的描述和建議,每個建議不超過 5 個字,只給出**1**個建議點,資訊最少"
+                else:
+                    suggestion_question = f"give precaution actions suggestions for the problem {point[0]} response in minimal point form: -... , -..., -... give minimal description and suggestions only with no more than 5 words, give only **1** suggestion point with minimal information"
+
                 self.describer.action(
-                    question=f"give precaution actions suggestions for the problem {point[0]} " \
-                             "response in minimal point form: -... , -..., -... " \
-                             "give minimal description and suggestions only with no more than 5 words, " \
-                             "give only **1** suggestion point with minimal information",
+                    question=suggestion_question,
                     image=image_path
                 )
                 response_text = self.describer.response
-                wrapped_lines = self.wrap_text_lines(point[0], response_text, max_chars=40)
+                wrapped_lines = self.wrap_text_lines(point[0], response_text, max_chars=40, language=self.language)
 
             else:
-                description = point[0][0].upper() + point[0][1:]
-                wrapped_lines = ["Description:", f"- {description}"]
+                description = point[0][0].upper() + point[0][1:] if point[0] else point[0]
+                if self.language == "chinese":
+                    wrapped_lines = ["描述:", f"- {description}"]
+                else:
+                    wrapped_lines = ["Description:", f"- {description}"]
 
             # Add text with background for readability
             text_position = (current_x_position, current_y_position)
@@ -295,8 +351,10 @@ class QwenDescriber:
             max_width = 0
             total_height = 0
 
+            # Calculate dimensions
+            header_keywords = ["Description:", "Suggestion:", "描述:", "建議:"]
             for line in wrapped_lines:
-                current_font = self.font_header if line.startswith("Description:") or line.startswith("Suggestion:") else self.font_body
+                current_font = self.font_header if any(line.startswith(kw) for kw in header_keywords) else self.font_body
                 bbox = draw.textbbox((text_position[0], y_offset), line, font=current_font)
                 width = bbox[2] - bbox[0]
                 max_width = max(max_width, width)
@@ -329,7 +387,7 @@ class QwenDescriber:
             # Draw the text in white
             y_offset = text_position[1]
             for line in wrapped_lines:
-                current_font = self.font_header if line.startswith("Description:") or line.startswith("Suggestion:") else self.font_body
+                current_font = self.font_header if any(line.startswith(kw) for kw in header_keywords) else self.font_body
                 draw.text((text_position[0], y_offset), line, fill=(255, 255, 255), font=current_font)
                 y_offset += line_height
 
@@ -428,13 +486,4 @@ class QwenDescriber:
 
 
 if __name__ == "__main__":
-    # # Example usage of the QwenDescriber class
-    # image = "https://hkpic1.aimo.tech/securityClockOut/20251020/as00122/06/20251020060315303-as00122-右.jpg"  # Local image path
-
-    # # Create describer instance with custom detection objects (optional)
-    # detection_objects = ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
-    # describer = QwenDescriber(detection_objects=detection_objects)
-
-    # # Process and annotate the image
-    # output_path = describer.process_and_annotate(image)
     pass

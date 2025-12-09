@@ -10,13 +10,15 @@ class ClockOutReader:
     """
     Class to read and monitor clock out data from the API
     """
-    def __init__(self, vin="as00212", dept_id=10, page_size=50, filter_mode='day', token_file='tokens.json', base_url="https://bj-robot.aimo.tech", credentials=None):
-        self.vin = vin
-        self.dept_id = dept_id
+    def __init__(self, vin=None, dept_id=None, page_size=50, filter_mode='day', token_file='tokens.json', base_url=None, credentials=None):
+        # Use environment variables if not provided
+        self.vin = vin if vin is not None else os.getenv('ROBOT_NAME', 'as00212')
+        self.dept_id = dept_id if dept_id is not None else int(os.getenv('DEPT_ID', '10'))
+        self.base_url = base_url if base_url is not None else os.getenv('API_BASE_URL', 'https://hk1.aimo.tech')
+
         self.page_size = page_size
         self.filter_mode = filter_mode  # 'day' or 'hour'
         self.token_file = token_file
-        self.base_url = base_url
         self.credentials = credentials  # Dict with 'username' and 'password' (required for auto token extraction)
         self.running = False
         self.thread = None
@@ -40,13 +42,16 @@ class ClockOutReader:
 
     def _set_default_headers(self):
         """Set default headers without authentication tokens (tokens will be added via extraction)"""
+        # Extract host from base_url
+        host = self.base_url.replace('https://', '').replace('http://', '').rstrip('/')
+
         self.headers = {
             "Accept": "application/json, text/plain, */*",
             "Accept-Encoding": "gzip, deflate, br, zstd",
             "Accept-Language": "en-US,en;q=0.9",
             "Connection": "keep-alive",
-            "Host": "hk1.aimo.tech",
-            "Referer": "https://hk1.aimo.tech/new-alarm-handle",
+            "Host": host,
+            "Referer": f"{self.base_url}/new-alarm-handle",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-origin",
