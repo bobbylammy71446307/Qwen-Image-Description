@@ -1,7 +1,6 @@
 version: '3.8'
 
 x-common-config: &common-config
-  build: .
   image: img_description:${IMAGE_TAG:-latest}
   environment:
     - PYTHONUNBUFFERED=1
@@ -35,6 +34,15 @@ x-common-config: &common-config
       max-file: "5"
 
 services:
+  # Build service - builds the image once
+  image-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: img_description:${IMAGE_TAG:-latest}
+    profiles:
+      - build
+
   image-description-as00213:
     <<: *common-config
     container_name: image-description-as00213
