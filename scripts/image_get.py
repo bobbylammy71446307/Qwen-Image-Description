@@ -178,9 +178,8 @@ class ClockOutReader:
         start_str = start_time.strftime("%Y-%m-%d+%H:%M:%S")
         end_str = end_time.strftime("%Y-%m-%d+%H:%M:%S")
 
-        # API endpoint - use the host from headers
-        api_host = self.headers.get('Host', 'hk1.aimo.tech')
-        url = f"https://{api_host}/api/getClockOutList"
+        # API endpoint - use the base_url
+        url = f"{self.base_url}/api/getClockOutList"
 
         # Parameters
         params = {
@@ -233,6 +232,7 @@ class ClockOutReader:
                     print(f"[DEBUG] Number of rows: {len(data['data']['rows'])}")
                     if len(data['data']['rows']) > 0:
                         print(f"[DEBUG] First row sample: {data['data']['rows'][0]}")
+                        print(f"[DEBUG] First row keys: {data['data']['rows'][0].keys()}")
             return data
 
         except json.JSONDecodeError as e:
@@ -261,12 +261,15 @@ class ClockOutReader:
 
     def get_filtered_urls(self, result, filter_mode='day'):
         """
-        Extract URLs from API result based on filter mode
+        Extract URLs and location data from API result based on filter mode
         Parses timestamp from URL format: .../YYYYMMDD/HH/YYYYMMDDHHMMSS-...
 
         Args:
-            result: API result containing rows with picUrl
+            result: API result containing rows with picUrl, lon, lat, clockOutPlace
             filter_mode: 'day' for same day, 'hour' for same hour (default: 'day')
+
+        Returns:
+            List of dictionaries with keys: 'picUrl', 'lon', 'lat', 'clockOutPlace'
         """
         if not result or 'data' not in result or 'rows' not in result['data']:
             print("[DEBUG] No result data or rows found")
@@ -284,7 +287,7 @@ class ClockOutReader:
         else:  # filter_mode == 'day'
             print(f"[DEBUG] Filtering for same day (GMT+8): {current_year}-{current_month:02d}-{current_day:02d}")
 
-        filtered_urls = []
+        filtered_data = []
         total_urls = 0
 
         for row in result['data']['rows']:
@@ -330,7 +333,14 @@ class ClockOutReader:
                     print(f"[DEBUG] URL timestamp: {url_year}-{url_month:02d}-{url_day:02d} {url_hour:02d}:00 | Match: {match}")
 
                 if match:
-                    filtered_urls.append(pic_url)
+                    # Extract location data
+                    item = {
+                        'picUrl': pic_url,
+                        'lon': row.get('lon'),
+                        'lat': row.get('lat'),
+                        'clockOutPlace': row.get('clockOutPlace')
+                    }
+                    filtered_data.append(item)
 
             except (ValueError, IndexError) as e:
                 # Skip URLs that don't match expected format
@@ -338,9 +348,9 @@ class ClockOutReader:
                 continue
 
         print(f"[DEBUG] Total URLs in response: {total_urls}")
-        print(f"[DEBUG] Filtered URLs for {filter_mode}: {len(filtered_urls)}")
+        print(f"[DEBUG] Filtered data for {filter_mode}: {len(filtered_data)}")
 
-        return filtered_urls
+        return filtered_data
 
     def get_current_hour_urls(self, result):
         """
@@ -361,14 +371,16 @@ class ClockOutReader:
         while self.running:
             result = self.get_clockout_list()
             if result:
-                urls = self.get_filtered_urls(result, filter_mode=self.filter_mode)
+                data_items = self.get_filtered_urls(result, filter_mode=self.filter_mode)
                 with self.lock:
-                    self.latest_urls = urls
-                    # Add new URLs to all_urls (avoid duplicates)
-                    for url in urls:
-                        if url not in self.all_urls:
-                            self.all_urls.append(url)
-                print(f"[{datetime.now(self.timezone).strftime('%Y-%m-%d %H:%M:%S')} GMT+8] Found {len(urls)} URLs for current {self.filter_mode} (Total: {len(self.all_urls)})")
+                    self.latest_urls = data_items
+                    # Add new items to all_urls (avoid duplicates based on picUrl)
+                    existing_pic_urls = {item['picUrl'] for item in self.all_urls}
+                    for item in data_items:
+                        if item['picUrl'] not in existing_pic_urls:
+                            self.all_urls.append(item)
+                            existing_pic_urls.add(item['picUrl'])
+                print(f"[{datetime.now(self.timezone).strftime('%Y-%m-%d %H:%M:%S')} GMT+8] Found {len(data_items)} items for current {self.filter_mode} (Total: {len(self.all_urls)})")
             time.sleep(interval)
 
     def start_monitoring(self, interval=60):
@@ -442,13 +454,16 @@ if __name__ == "__main__":
     try:
         while True:
             time.sleep(5)  # Check for new URLs every 5 seconds
-            urls = reader.get_latest_urls()
-            if urls:
-                print(f"\nCurrent {reader.filter_mode} URLs ({len(urls)}):")
-                for url in urls[:5]:  # Show first 5 URLs
-                    print(url)
-                if len(urls) > 5:
-                    print(f"... and {len(urls) - 5} more")
+            data_items = reader.get_latest_urls()
+            if data_items:
+                print(f"\nCurrent {reader.filter_mode} items ({len(data_items)}):")
+                for item in data_items[:5]:  # Show first 5 items
+                    print(f"  URL: {item['picUrl']}")
+                    print(f"  Location: ({item['lon']}, {item['lat']})")
+                    print(f"  Place: {item['clockOutPlace']}")
+                    print()
+                if len(data_items) > 5:
+                    print(f"... and {len(data_items) - 5} more")
     except KeyboardInterrupt:
         print("\n\nStopping monitoring...")
         reader.stop_monitoring()

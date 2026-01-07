@@ -10,17 +10,24 @@ class QwenDescriber:
     Supports both English and Chinese languages
     """
 
-    def __init__(self, detection_objects= ["unattended object", "pets that are not leashed", "water puddle", "unclosed doors", "bicycle", "violent actions"],
-                 prompt_file="prompt_english.txt", language="english"):
+    def __init__(self,
+                #  detection_objects= ["unattended object", "pets that are not leashed", "water puddle", "unclosed doors", "bicycle", "violent actions"],
+                 detection_objects= ["alarm light","industrial valve"],
+                 prompt_file="prompt_english.txt",
+                 language="english",
+                 text_alignment="left"):
         self.describer = qwen_llm("image description")
         self.detector = qwen_llm("detector",detection_list=detection_objects)
         self.detection_objects = detection_objects
         self.prompt_file = prompt_file
         self.language = language.lower()
+        self.text_alignment = text_alignment.lower()  # "left" or "right"
         self.security_prompt = self._load_prompt()
         self.font_header = None
         self.font_body = None
         self._load_fonts()
+        self.unique_labels = set()
+        self.ai_text = ""  # Store full text description for POST data
 
     def _load_prompt(self):
         """Load the security observation prompt from file"""
@@ -221,6 +228,8 @@ class QwenDescriber:
 
             print("[DEBUG] Step 2: Checking for specific objects...")
 
+            self.detected_obj_list = []
+
             # Translate detection objects to Chinese if needed
             detection_objects_for_query = self.detection_objects
             if self.language == "chinese":
@@ -307,12 +316,12 @@ class QwenDescriber:
                     print(f"[DEBUG] Loaded annotated image with bounding boxes into memory")
 
                     # Add detected objects to points as priors (one point per unique label)
-                    unique_labels = set()
+                    self.unique_labels = set()
                     for detection in detections:
                         if "label" in detection and "bbox_2d" in detection:
                             label = detection["label"]
-                            if label not in unique_labels:
-                                unique_labels.add(label)
+                            if label not in self.unique_labels:
+                                self.unique_labels.add(label)
 
                                 # Simplify label for display
                                 # Map detailed descriptions to concise labels
@@ -328,7 +337,7 @@ class QwenDescriber:
                                     points.append([f"檢測到 {simplified_label}", "否"])
                                 else:
                                     points.append([f"{simplified_label} detected", "no"])
-                    print(f"[DEBUG] Added {len(unique_labels)} unique detection labels to points")
+                    print(f"[DEBUG] Added {len(self.unique_labels)} unique detection labels to points")
                 else:
                     print("[DEBUG] No detections found")
 
@@ -389,13 +398,24 @@ class QwenDescriber:
             img = Image.open(image_path)
 
         print(f"[DEBUG] Image loaded. Size: {img.size}")
+        img_width, img_height = img.size
         draw = ImageDraw.Draw(img)
 
         # Track the vertical position for stacking text boxes
         current_y_position = 60
-        current_x_position = 60
+
+        # Set initial x position based on alignment
+        # For right alignment, we'll calculate after knowing box width
+        if self.text_alignment == "right":
+            current_x_position = None  # Will be calculated per box
+        else:  # left alignment (default)
+            current_x_position = 60
         description_only_column_count = 0
         row_max_height = 0
+
+        # Initialize AI text collection
+        self.ai_text = ""
+        text_lines = []
 
         # Define no/yes values based on language
         no_values = ['no', '否']
@@ -432,22 +452,37 @@ class QwenDescriber:
                 else:
                     wrapped_lines = ["Description:", f"- {description}"]
 
-            # Add text with background for readability
-            text_position = (current_x_position, current_y_position)
+            # Collect text for AI text output
+            text_lines.extend(wrapped_lines)
+            text_lines.append("")  # Add empty line between observations
+
+            # Calculate dimensions first (needed for positioning)
             line_height = 42
-            y_offset = text_position[1]
             max_width = 0
             total_height = 0
 
-            # Calculate dimensions
+            # Calculate box dimensions
             header_keywords = ["Description:", "Suggestion:", "描述:", "建議:"]
+            temp_y = current_y_position
             for line in wrapped_lines:
                 current_font = self.font_header if any(line.startswith(kw) for kw in header_keywords) else self.font_body
-                bbox = draw.textbbox((text_position[0], y_offset), line, font=current_font)
+                # Use a temporary position for measurement
+                bbox = draw.textbbox((0, temp_y), line, font=current_font)
                 width = bbox[2] - bbox[0]
                 max_width = max(max_width, width)
                 total_height += line_height
-                y_offset += line_height
+                temp_y += line_height
+
+            # Calculate x position based on alignment
+            if self.text_alignment == "right":
+                # Right-align: position from right edge
+                text_x = img_width - max_width - 60 - 70  # 60 margin + 70 for padding (35*2)
+            else:  # left alignment
+                text_x = current_x_position if current_x_position is not None else 60
+
+            # Set text position
+            text_position = (text_x, current_y_position)
+            y_offset = text_position[1]
 
             # Draw background rectangle
             background_bbox = (
@@ -484,16 +519,34 @@ class QwenDescriber:
                 description_only_column_count += 1
                 row_max_height = max(row_max_height, total_height)
 
-                if description_only_column_count >= 2:
+                # For right alignment, always stack vertically (no columns)
+                if self.text_alignment == "right":
+                    # Stack all boxes vertically with reduced spacing
+                    current_y_position = text_position[1] + total_height + 20 + 35 + 40
+                    current_x_position = None  # Will recalculate
+                    description_only_column_count = 0
+                    row_max_height = 0
+                elif description_only_column_count >= 2:
+                    # Left alignment: multi-column layout
                     current_y_position = current_y_position + row_max_height + 80
                     current_x_position = 60
                     description_only_column_count = 0
                     row_max_height = 0
                 else:
+                    # Left alignment: move to next column
                     current_x_position = current_x_position + max_width + 100
             else:
-                current_y_position = text_position[1] + total_height + 80
-                current_x_position = 60
+                # Move to next position accounting for:
+                # - total_height (text)
+                # - 20 (bottom padding of current box)
+                # - 35 (top padding of next box)
+                # - 40 (spacing between boxes - reduced from 80)
+                current_y_position = text_position[1] + total_height + 20 + 35 + 40
+                # Reset x position based on alignment
+                if self.text_alignment == "right":
+                    current_x_position = None  # Will recalculate
+                else:
+                    current_x_position = 60
 
         # Generate output path if not provided
         if output_path is None:
@@ -569,6 +622,10 @@ class QwenDescriber:
             import traceback
             traceback.print_exc()
             raise
+
+        # Join all collected text lines into ai_text
+        self.ai_text = "\n".join(text_lines)
+        print(f"[DEBUG] AI text collected: {len(self.ai_text)} characters")
 
         return return_path
 

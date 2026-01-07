@@ -103,6 +103,12 @@ Examples:
   # Process a single image
   python image_description_chinese_local.py input.jpg
 
+  # Process multiple images
+  python image_description_chinese_local.py image1.jpg image2.jpg image3.jpg
+
+  # Process images with glob pattern
+  python image_description_chinese_local.py ./images/Weixin*.jpg
+
   # Process all images in a directory
   python image_description_chinese_local.py images/
 
@@ -121,6 +127,9 @@ Examples:
   # Use custom prompt file
   python image_description_chinese_local.py input.jpg -p custom_prompt.txt
 
+  # Right-align text boxes on images
+  python image_description_chinese_local.py images/ --text-alignment right
+
   # Enable verbose mode
   python image_description_chinese_local.py images/ -v --post-to-server
         """
@@ -128,8 +137,9 @@ Examples:
 
     parser.add_argument(
         'input',
-        help='Path to input image file or directory containing images',
-        default="./images"
+        nargs='+',
+        help='Path to input image file(s) or directory containing images',
+        default=["./images"]
     )
 
     parser.add_argument(
@@ -142,7 +152,7 @@ Examples:
         '-d', '--detection-objects',
         nargs='+',
         help='List of objects to detect (default: plastic bag, plastic bottle, cardboard, water puddle, smoker)',
-        default=["unattended object", "pets", "pets that are not leased", "water puddle", "unclosed doors", "bicycle", "violent actions"]
+        default=["alarm light","industrial valve"]
     )
 
     parser.add_argument(
@@ -181,6 +191,13 @@ Examples:
         default='./config.yaml'
     )
 
+    parser.add_argument(
+        '--text-alignment',
+        choices=['left', 'right'],
+        help='Text box alignment on image (default: left)',
+        default='left'
+    )
+
     args = parser.parse_args()
 
     # Load configuration
@@ -191,7 +208,10 @@ Examples:
     api_timeout = api_config.get("timeout", 10)
 
     # Get list of image files to process
-    image_files = get_image_files(args.input)
+    image_files = []
+    for input_path in args.input:
+        files = get_image_files(input_path)
+        image_files.extend(files)
 
     if not image_files:
         print("[ERROR] No valid image files found")
@@ -210,7 +230,8 @@ Examples:
     try:
         describer = QwenDescriber(
             detection_objects=args.detection_objects,
-            prompt_file=args.prompt_file
+            prompt_file=args.prompt_file,
+            text_alignment=args.text_alignment
         )
     except Exception as e:
         print(f"[ERROR] Failed to initialize describer: {e}")
@@ -298,7 +319,8 @@ Examples:
                     "robot": args.robot_name,
                     "camera": args.camera_name,
                     "pose": get_robot_pose(),
-                    "image_path": [result_path]
+                    "image_path": [result_path],
+                    "aiText": describer.ai_text  # Add AI-generated text description
                 }
 
                 # Print endpoint and data to console with formatting

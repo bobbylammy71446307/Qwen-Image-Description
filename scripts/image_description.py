@@ -76,7 +76,7 @@ def main():
     robot_name = os.getenv('ROBOT_NAME', 'as00213')  # Default to 'as00214' if not set
     dept_id = int(os.getenv('DEPT_ID', '10'))  # Default to 10 if not set
     # Get time range from environment variable (in hours, supports decimals like 0.5 for 30 minutes)
-    fetch_time_range_hours = float(os.getenv('FETCH_TIME_RANGE_HOURS', '0.083'))
+    fetch_time_range_hours = float(os.getenv('FETCH_TIME_RANGE_HOURS', '1'))
 
     # Get language setting from environment variable (english or chinese)
     language = os.getenv('LANGUAGE', 'english').lower()
@@ -151,20 +151,25 @@ def main():
         print("[WARNING] No data received from API")
         sys.exit(0)
 
-    # Extract all URLs from the result (no filtering by current day/hour)
-    all_urls = []
+    # Extract all data items from the result (including location data)
+    all_items = []
     if result and 'data' in result and 'rows' in result['data']:
         for row in result['data']['rows']:
             if 'picUrl' in row:
-                all_urls.append(row['picUrl'])
+                all_items.append({
+                    'picUrl': row['picUrl'],
+                    'lon': row.get('lon'),
+                    'lat': row.get('lat'),
+                    'clockOutPlace': row.get('clockOutPlace')
+                })
 
-    print(f"[INFO] Found {len(all_urls)} total URLs in response")
+    print(f"[INFO] Found {len(all_items)} total items in response")
 
     # Filter out already processed URLs
-    unprocessed_urls = [url for url in all_urls if url not in processed_urls]
-    print(f"[INFO] {len(unprocessed_urls)} new URLs to process ({len(all_urls) - len(unprocessed_urls)} already processed)")
+    unprocessed_items = [item for item in all_items if item['picUrl'] not in processed_urls]
+    print(f"[INFO] {len(unprocessed_items)} new items to process ({len(all_items) - len(unprocessed_items)} already processed)")
 
-    if len(unprocessed_urls) == 0:
+    if len(unprocessed_items) == 0:
         print("[INFO] No new URLs to process. Exiting.")
         sys.exit(0)
 
@@ -173,10 +178,11 @@ def main():
     post_success_count = 0
     post_failed_count = 0
 
-    # Process each unprocessed URL
-    for idx, url in enumerate(unprocessed_urls, 1):
+    # Process each unprocessed item
+    for idx, item in enumerate(unprocessed_items, 1):
         try:
-            print(f"[PROCESSING] ({idx}/{len(unprocessed_urls)}) {url}")
+            url = item['picUrl']
+            print(f"[PROCESSING] ({idx}/{len(unprocessed_items)}) {url}")
 
             output_path = describer.process_and_annotate(url)
 
@@ -188,20 +194,52 @@ def main():
             # Post to server immediately after annotation completion
             try:
                 annotation_time = datetime.now(hong_kong_tz)
-                post_data = {
-                    "model_type": "ai_description",
-                    "time": annotation_time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "robot": robot,
-                    "camera": camera,
-                    "pose": get_robot_pose(),
-                    "image_path": [output_path]  # Single image path in array
-                }
-                if post_json_data(post_data, post_endpoint, timeout=api_timeout):
-                    post_success_count += 1
-                    print(f"[SUCCESS] Posted annotation to server: {output_path}")
+
+                # Determine how many posts to send based on unique_labels
+                if len(describer.unique_labels) == 0:
+                    # No detections - send single post with ai_description
+                    print(f"[INFO] No detections found. Sending single post with model_type: ai_description")
+                    post_data = {
+                        "model_type": "ai_description",
+                        "time": annotation_time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "robot": robot,
+                        "camera": camera,
+                        "pose": get_robot_pose(),
+                        "image_path": [output_path],  # Single image path in array
+                        "lon": item.get('lon'),
+                        "lat": item.get('lat'),
+                        "clockOutPlace": item.get('clockOutPlace'),
+                        "aiText": describer.ai_text  # Add AI-generated text description
+                    }
+                    if post_json_data(post_data, post_endpoint, timeout=api_timeout):
+                        post_success_count += 1
+                        print(f"[SUCCESS] Posted annotation to server: {output_path}")
+                    else:
+                        post_failed_count += 1
+                        print(f"[WARNING] Failed to post annotation to server: {output_path}")
                 else:
-                    post_failed_count += 1
-                    print(f"[WARNING] Failed to post annotation to server: {output_path}")
+                    # One or more detections - send one post per unique label
+                    print(f"[INFO] Found {len(describer.unique_labels)} unique detection(s). Sending post for each label.")
+                    for label in describer.unique_labels:
+                        post_data = {
+                            "model_type": label,
+                            "time": annotation_time.strftime("%Y-%m-%d %H:%M:%S"),
+                            "robot": robot,
+                            "camera": camera,
+                            "pose": get_robot_pose(),
+                            "image_path": [output_path],  # Single image path in array
+                            "lon": item.get('lon'),
+                            "lat": item.get('lat'),
+                            "clockOutPlace": item.get('clockOutPlace'),
+                            "aiText": describer.ai_text  # Add AI-generated text description
+                        }
+                        if post_json_data(post_data, post_endpoint, timeout=api_timeout):
+                            post_success_count += 1
+                            print(f"[SUCCESS] Posted annotation with model_type '{label}' to server: {output_path}")
+                        else:
+                            post_failed_count += 1
+                            print(f"[WARNING] Failed to post annotation with model_type '{label}' to server: {output_path}")
+
             except Exception as post_error:
                 post_failed_count += 1
                 print(f"[ERROR] Error posting to server: {post_error}")

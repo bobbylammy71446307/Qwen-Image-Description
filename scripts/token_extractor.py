@@ -68,11 +68,13 @@ class TokenExtractor:
                         cookie = headers.get('Cookie') or headers.get('cookie')
 
                         if x_token:
+                            # Extract host from base_url
+                            host = self.base_url.replace('https://', '').replace('http://', '').rstrip('/')
                             return {
                                 'x_token': x_token,
                                 'cookie': cookie,
                                 'url': url,
-                                'host': headers.get('Host', 'hk1.aimo.tech')
+                                'host': headers.get('Host', host)
                             }
             except Exception as e:
                 continue
