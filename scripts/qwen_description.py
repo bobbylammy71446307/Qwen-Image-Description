@@ -1,24 +1,19 @@
+import pytz
 from qwen_llm import qwen_llm
 from PIL import Image, ImageDraw, ImageFont
 
 
 class QwenDescriber:
     """
-    Class for generating security surveillance descriptions and annotating images
+    Simplified class for generating security surveillance descriptions and annotating images
+    Uses direct object detection without pre-filtering
     Supports both English and Chinese languages
     """
 
-    def __init__(self, detection_objects= ["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"],
+    def __init__(self, detection_objects= ["unattended object", "pets that are not leashed", "water puddle", "unclosed doors", "bicycle", "violent actions"],
                  prompt_file="prompt_english.txt", language="english"):
-        """
-        Initialize the describer
-        Args:
-            detection_objects: List of objects to detect (e.g., ["plastic bag", "water puddle"])
-            prompt_file: Path to the prompt file containing the security observation question
-            language: "english" or "chinese" (determines fonts and text handling)
-        """
         self.describer = qwen_llm("image description")
-        self.chatter = qwen_llm("chatter")
+        self.detector = qwen_llm("detector",detection_list=detection_objects)
         self.detection_objects = detection_objects
         self.prompt_file = prompt_file
         self.language = language.lower()
@@ -203,11 +198,12 @@ class QwenDescriber:
     def process_and_annotate(self, image_path, output_path=None):
         """
         Process an image and generate annotated version with security observations
+        Uses simple direct detection without pre-filtering
         Args:
             image_path: Path to the image (local file or HTTP URL)
             output_path: Optional output path for annotated image
         Returns:
-            Tuple of (points, output_path) where points is list of observations
+            Path to annotated image
         """
         try:
             print(f"[DEBUG] Starting image processing: {image_path}")
@@ -223,38 +219,126 @@ class QwenDescriber:
             points = self.extract_points(response)
             print(f"[DEBUG] Extracted points: {points}")
 
-            print("[DEBUG] Step 3: Checking for specific objects...")
+            print("[DEBUG] Step 2: Checking for specific objects...")
+
             # Translate detection objects to Chinese if needed
+            detection_objects_for_query = self.detection_objects
             if self.language == "chinese":
                 objects_chinese = {
                     "pets": "寵物",
-                    "plastic bag": "塑膠袋",
-                    "plastic bottle": "塑膠瓶",
-                    "cardboard": "紙板",
+                    "rubbish": "垃圾",
                     "water puddle": "水坑",
-                    "smoker": "吸煙者"
+                    "smoker": "吸煙者",
+                    "pet not leashed": "寵物未牽繩",
+                    "pets that are not leashed": "寵物未牽繩",
+                    "person on skateboard": "滑板人士",
+                    "person on bicycle": "騎自行車人士",
+                    "person playing ball game": "打球人士",
+                    "person injured": "受傷人士",
+                    "unattended object": "無人看管物品",
+                    "unclosed doors": "未關門",
+                    "bicycle": "自行車",
+                    "violent actions": "暴力行為"
                 }
-                translated_objects = [objects_chinese.get(obj, obj) for obj in self.detection_objects]
-                question = f"照片中是否有{translated_objects}?示例回答格式:\n垃圾, 否\n水坑, 否\n吸煙者, 否"
+                detection_objects_for_query = [objects_chinese.get(obj, obj) for obj in self.detection_objects]
+
+            # Use simple pre-filtering prompt to check if objects exist
+            if self.language == "chinese":
+                filter_question = f"圖像中是否存在以下任何物體？{detection_objects_for_query} 如果存在，請列出存在的物體。只返回存在的物體列表，格式：['物體1', '物體2'] 如果沒有則返回 []"
             else:
-                question = f"Are there {self.detection_objects} in the photo?Example answer format:\nrubbish, no\nwater puddle, no\nsmoker , no"
+                filter_question = f"Are any of the following objects present in the image? {detection_objects_for_query} If yes, list which ones exist. Return only a list of existing objects in format: ['object1', 'object2'] or [] if none"
 
-            # Check for specific objects
-            self.describer.action(
-                question=question,
-                image=image_path
-            )
-            obj_detection_list = self.extract_points(self.describer.response)
-            print(f"[DEBUG] Object detection results: {obj_detection_list}")
+            self.describer.action(image=image_path, question=filter_question)
 
-            # Add visible objects to points
-            yes_values = ["yes", "是"] if self.language == "chinese" else ["yes"]
-            for obj in obj_detection_list:
-                if len(obj) >= 2 and obj[1].replace(" ", "").replace(".","").lower() in yes_values:
-                    if self.language == "chinese":
-                        points.append([f"檢測到{obj[0]}", "否"])
-                    else:
-                        points.append([f"{obj[0]} detected", "no"])
+            # Parse the filtered list
+            filtered_objects = []
+            try:
+                import ast
+                filter_response = self.describer.response.strip()
+                print(f"[DEBUG] Filter response: {filter_response}")
+
+                # Extract list from response
+                if '[' in filter_response and ']' in filter_response:
+                    start_idx = filter_response.find('[')
+                    end_idx = filter_response.rfind(']') + 1
+                    list_str = filter_response[start_idx:end_idx]
+                    filtered_objects = ast.literal_eval(list_str)
+                    print(f"[DEBUG] Filtered objects that exist in image: {filtered_objects}")
+                else:
+                    print("[WARNING] No list found in response")
+                    filtered_objects = []
+            except Exception as e:
+                print(f"[WARNING] Failed to parse filtered objects: {e}")
+                filtered_objects = []
+
+            # Only run detector if there are objects to detect
+            if filtered_objects:
+                print(f"[DEBUG] Step 3: Running detector on filtered objects: {filtered_objects}")
+                # Update detector with filtered list
+                self.detector.detection_list = filtered_objects
+                self.detector.action(image=image_path)
+            else:
+                print("[DEBUG] No objects from detection list found in image, skipping detector")
+                self.detector.response = "[]"  # Empty detection result
+
+            # Parse detector response (expects JSON array format)
+            import json
+            detection_img = None  # Store image with bounding boxes if detections exist
+            try:
+                # Extract JSON from detector response
+                clean_json_str = self.detector.extract_json_from_string(self.detector.response)
+                detections = json.loads(clean_json_str)
+                print(f"[DEBUG] Detector response: {detections}")
+
+                # If there are detections, draw bounding boxes on the image
+                if detections and len(detections) > 0:
+                    print(f"[DEBUG] Drawing {len(detections)} bounding boxes...")
+                    # Draw bounding boxes on image (modifies image in place)
+                    annotated_img_bytes = self.detector.draw_normalized_bounding_boxes(
+                        image_path,
+                        self.detector.response
+                    )
+
+                    # Update image in memory instead of saving to temp path
+                    # This preserves the original image_path for final save naming
+                    from io import BytesIO
+                    from PIL import Image as PIL_Image
+                    detection_img = PIL_Image.open(BytesIO(annotated_img_bytes))
+                    print(f"[DEBUG] Loaded annotated image with bounding boxes into memory")
+
+                    # Add detected objects to points as priors (one point per unique label)
+                    unique_labels = set()
+                    for detection in detections:
+                        if "label" in detection and "bbox_2d" in detection:
+                            label = detection["label"]
+                            if label not in unique_labels:
+                                unique_labels.add(label)
+
+                                # Simplify label for display
+                                # Map detailed descriptions to concise labels
+                                if "bag" in label.lower() and ("unattended" in label.lower() or "alone" in label.lower() or "no person" in label.lower()):
+                                    simplified_label = "unattended bag"
+                                elif "person" in label.lower() and ("slot machine" in label.lower() or "arcade" in label.lower()) and ("not playing" in label.lower() or "idle" in label.lower() or "not engaging" in label.lower()):
+                                    simplified_label = "person occupying a slot machine"
+                                else:
+                                    # Fallback: use the original label if no pattern matches
+                                    simplified_label = label
+
+                                if self.language == "chinese":
+                                    points.append([f"檢測到 {simplified_label}", "否"])
+                                else:
+                                    points.append([f"{simplified_label} detected", "no"])
+                    print(f"[DEBUG] Added {len(unique_labels)} unique detection labels to points")
+                else:
+                    print("[DEBUG] No detections found")
+
+            except json.JSONDecodeError as e:
+                print(f"[WARNING] Failed to parse detector response as JSON: {e}")
+                print(f"[DEBUG] Detector response was: {self.detector.response}")
+            except Exception as e:
+                print(f"[WARNING] Error processing detections: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Filter out any malformed points (safety check)
             points = [p for p in points if len(p) >= 2]
@@ -265,8 +349,8 @@ class QwenDescriber:
             points.sort(key=lambda x: 0 if x[1].replace(' ', '').replace(".","").lower() in no_values else 1)
 
             print(f"[DEBUG] Step 4: Generating annotated image with {len(points)} observations...")
-            # Generate annotated image
-            annotated_path = self._annotate_image(image_path, points, output_path)
+            # Generate annotated image, passing pre-loaded detection image if available
+            annotated_path = self._annotate_image(image_path, points, output_path, detection_img)
 
             print(f"[DEBUG] Successfully completed processing. Output: {annotated_path}")
             return annotated_path
@@ -277,19 +361,23 @@ class QwenDescriber:
             traceback.print_exc()
             raise
 
-    def _annotate_image(self, image_path, points, output_path=None):
+    def _annotate_image(self, image_path, points, output_path=None, preloaded_img=None):
         """
         Annotate image with observations and suggestions
         Args:
-            image_path: Path to input image
+            image_path: Path to input image (used for naming even if preloaded_img is provided)
             points: List of observation points
             output_path: Optional output path
+            preloaded_img: Optional pre-loaded PIL Image (e.g., with bounding boxes already drawn)
         Returns:
             Path to annotated image
         """
         # Load the image
         print(f"[DEBUG] Loading image...")
-        if image_path.startswith(('http://', 'https://')):
+        if preloaded_img is not None:
+            print(f"[DEBUG] Using pre-loaded image with detections...")
+            img = preloaded_img
+        elif image_path.startswith(('http://', 'https://')):
             import requests
             from io import BytesIO
             print(f"[DEBUG] Downloading image from URL...")
@@ -413,7 +501,7 @@ class QwenDescriber:
             from datetime import datetime
 
             # Get current timestamp
-            now = datetime.now()
+            now = datetime.now(pytz.timezone('Asia/Hong_Kong'))
             year = now.strftime('%Y')
             month = now.strftime('%m')
             day = now.strftime('%d')
@@ -486,4 +574,25 @@ class QwenDescriber:
 
 
 if __name__ == "__main__":
-    pass
+    # Trial run with casino image
+    print("[INFO] Starting trial run with simple detector...")
+
+    describer = QwenDescriber(
+        detection_objects=[
+            "bag placed alone on floor or seat with no person nearby within arm's reach",
+            "person seated in front of slot machine but not playing the slot machine"
+        ],
+        prompt_file="prompt_english.txt",
+        language="english"
+    )
+
+    # Process the image
+    image_path = "https://hkpic1.aimo.tech/securityClockOut/20251210/as00213/15/20251210150950218-as00213-%E5%B7%A6.jpg"
+
+    try:
+        output_path = describer.process_and_annotate(image_path)
+        print(f"[SUCCESS] Trial run completed! Annotated image saved to: {output_path}")
+    except Exception as e:
+        print(f"[ERROR] Trial run failed: {e}")
+        import traceback
+        traceback.print_exc()

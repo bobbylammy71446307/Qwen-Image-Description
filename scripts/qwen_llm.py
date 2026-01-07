@@ -232,6 +232,8 @@ class qwen_llm():
                 modalities=["text"],
                 stream=True,
                 stream_options={"include_usage": True},
+                temperature=0.1,
+                top_p=0.7
                 )
             response=self.get_full_content(completion)
             return response
@@ -248,72 +250,88 @@ class qwen_llm():
             return
         try:
             self.response=self.run_model(question,image)
-            # print(self.response)
-            if self.mode == "detector":
-                annotated_image_bytes = self.draw_normalized_bounding_boxes(image, self.response)
-                # Convert bytes back to PIL Image and display
-                annotated_image = PIL_Image.open(BytesIO(annotated_image_bytes))
-                annotated_image.show()
+            # # print(self.response)
+            # if self.mode == "detector":
+            #     annotated_image_bytes = self.draw_normalized_bounding_boxes(image, self.response)
+            #     # Convert bytes back to PIL Image and display
+            #     annotated_image = PIL_Image.open(BytesIO(annotated_image_bytes))
+            #     annotated_image.show()
         except Exception as e:
             print(f"[ERROR] Action failed: {e}")
             import traceback
             traceback.print_exc()
             self.response = ""
 
-
 if __name__=="__main__":
-    # image="images/lab_2.png"
-    # detection_list=["plastic bag","cardboard", "rubbish bin"]
-    # detection_list=["person"]
-    # detection_list=["light not lighted up"]
-    # talker=qwen_llm("detector",detection_list)
-    # talker.action(image=image)
+    # Universal prompt testing
+    image = "https://hkpic1.aimo.tech/securityClockOut/20251210/as00213/15/20251210154016410-as00213-%E5%B7%A6.jpg"
 
-    # image="images/lab_2.png"
-    # talker=qwen_llm("image description")
-    # talker.action(question="Are there unlit light in the photo? Answer yes or no only.",image=image)
-    # if talker.response == "yes":
-    #     detection_list=["water puddle"]
-    #     detector=qwen_llm("detector",detection_list)
-    #     detector.action(image=image)
+    # Test objects to detect
+    detection_objects = ["unattended bag","person seated in front of slot machine but not playing the slot machine"]
 
-    # image="water_3_cropped.jpeg"
-    # talker=qwen_llm("image description")
-    # talker.action(question="Are there water puddles in the photo? Answer yes or no only.",image=image)
-    # if talker.response == "yes":
-    #     detection_list=["water puddle"]
-    #     detector=qwen_llm("detector",detection_list)
-    #     detector.action(image=image)
+    # Universal prompt that requests detailed explanation then extracts list
+    def create_universal_filter_prompt(objects_list):
+        """
+        Creates a universal prompt that:
+        1. Takes a list of objects/scenarios as input
+        2. Requests detailed explanation for each
+        3. Returns a Python list of detailed descriptions of detected objects
+        """
+        prompt = f"""Analyze the image carefully for the following objects/scenarios:
+{objects_list}
 
+For EACH item in the list above:
+1. Examine the image thoroughly
+2. Verify ALL conditions mentioned (e.g., if it says "not playing", verify the person is truly idle with hands away from controls, not engaged with the machine)
+3. Check negative conditions carefully (e.g., "not playing" means hands idle AND not looking at screen AND not pressing buttons)
+4. Provide a brief explanation of what you observe for each item
+5. Be strict and conservative: only confirm existence if ALL conditions are definitively met. When in doubt, exclude it.
 
+After your detailed analysis, for each object that truly exists, provide a detailed description including its location, posture, and state.
 
-    # talker.action("is there a person in the infrared image, answer yes or no only", image)
+Response format:
+Analysis: [your detailed reasoning for each item]
+Result: ['detailed description of detected object 1', 'detailed description of detected object 2'] or [] if none exist
 
-    # image="license_plate_3.jpg"
-    # talker=qwen_llm("license plate detection")
-    # talker.action(image=image)
+For example, instead of returning ['person not playing'], return ['person seated at third slot machine on left with hands resting on lap, not engaging with controls']"""
+        return prompt
 
-    # image="image_copy.png"
-    # describer=qwen_llm("image description")
-    # detector = qwen_llm("detector", detection_list=["person not wearing safety helmet on their head"])
-    # describer.action(question=(
-    #     "你是工地安全檢查員。你的任務是找出**沒有**佩戴安全帽的人。\n\n"
-    #     "安全帽識別標準：\n"
-    #     "- 安全帽是**堅硬的頭盔**（通常是黃色、白色、紅色或藍色）\n"
-    #     "- 普通帽子、鴨舌帽、布帽**不是**安全帽\n"
-    #     "- 如果頭上什麼都沒戴，或只戴了普通帽子 = **未佩戴安全帽**\n\n"
-    #     "檢查任務：\n"
-    #     "請仔細觀察圖片中**每一個人的頭部**。\n"
-    #     "找出所有**沒有佩戴硬質頭盔**的人。\n\n"
-    #     "回答要求：\n"
-    #     "- 如果發現有人**沒戴**安全帽（硬質頭盔），回答：\"有人未佩戴安全帽\"，並具體說明是哪一個人（位置、穿著特徵）\n"
-    #     "- 只有當**每個人**頭上都有硬質頭盔時，才回答：\"所有人都佩戴安全帽\"\n"
-    #     "- 有疑問時，請傾向於報告\"有人未佩戴安全帽\"\n\n"
-    #     "現在請檢查圖片並給出答案："
-    # ), image=image)
-    # print(describer.response)
+    # Test the universal prompt
+    print("=" * 80)
+    print("TESTING UNIVERSAL FILTER PROMPT")
+    print("=" * 80)
 
-    chatter = qwen_llm("chatter")
-    question = "停車場的保安人員,關於停車場環境請列出兩項你需要注意的事項 "
-    chatter.action(question=question)
-    print(chatter.response)
+    talker = qwen_llm("image description")
+    universal_prompt = create_universal_filter_prompt(detection_objects)
+
+    print(f"\nPrompt:\n{universal_prompt}\n")
+    print("-" * 80)
+
+    talker.action(image=image, question=universal_prompt)
+    print(f"\nResponse:\n{talker.response}\n")
+    print("=" * 80)
+
+    # Extract the list from response
+    import ast
+    try:
+        response_text = talker.response.strip()
+        if '[' in response_text and ']' in response_text:
+            start_idx = response_text.find('[')
+            end_idx = response_text.rfind(']') + 1
+            list_str = response_text[start_idx:end_idx]
+            extracted_list = ast.literal_eval(list_str)
+            print(f"\nExtracted List: {extracted_list}")
+        else:
+            print("\nNo list found in response")
+    except Exception as e:
+        print(f"\nError extracting list: {e}")
+
+    print("\n" + "=" * 80)
+
+    # Also test detector for comparison
+    print("\nCOMPARISON: DETECTOR MODE")
+    print("=" * 80)
+    detector = qwen_llm("detector", detection_list=detection_objects)
+    detector.action(image=image)
+    print(f"\nDetector Response:\n{detector.response}\n")
+    print("=" * 80)

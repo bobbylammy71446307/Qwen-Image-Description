@@ -8,7 +8,7 @@ from datetime import datetime
 import pytz
 import yaml
 import requests
-from qwen_description_chinese import QwenDescriber_chinese
+from qwen_description import QwenDescriber
 
 
 def load_config(config_path="./config.yaml"):
@@ -128,7 +128,8 @@ Examples:
 
     parser.add_argument(
         'input',
-        help='Path to input image file or directory containing images'
+        help='Path to input image file or directory containing images',
+        default="./images"
     )
 
     parser.add_argument(
@@ -141,13 +142,13 @@ Examples:
         '-d', '--detection-objects',
         nargs='+',
         help='List of objects to detect (default: plastic bag, plastic bottle, cardboard, water puddle, smoker)',
-        default=["plastic bag", "plastic bottle", "cardboard", "water puddle", "smoker"]
+        default=["unattended object", "pets", "pets that are not leased", "water puddle", "unclosed doors", "bicycle", "violent actions"]
     )
 
     parser.add_argument(
         '-p', '--prompt-file',
-        help='Path to prompt file (default: prompt_chinese.txt)',
-        default='prompt_chinese.txt'
+        help='Path to prompt file (default: prompt_english.txt)',
+        default='prompt_english.txt'
     )
 
     parser.add_argument(
@@ -165,7 +166,7 @@ Examples:
     parser.add_argument(
         '--robot-name',
         help='Robot name for posting to server (default: from ROBOT_NAME env or "local")',
-        default=os.getenv('ROBOT_NAME', 'local')
+        default="as00214"
     )
 
     parser.add_argument(
@@ -186,6 +187,7 @@ Examples:
     config = load_config(args.config)
     api_config = config.get("api", {})
     post_endpoint = api_config.get("post_endpoint", "http://post-server:8080/api/detections")
+    print (f"[INFO] Post endpoint: {post_endpoint}")
     api_timeout = api_config.get("timeout", 10)
 
     # Get list of image files to process
@@ -206,7 +208,7 @@ Examples:
 
     # Initialize describer
     try:
-        describer = QwenDescriber_chinese(
+        describer = QwenDescriber(
             detection_objects=args.detection_objects,
             prompt_file=args.prompt_file
         )
@@ -252,6 +254,41 @@ Examples:
             processed_count += 1
             print(f"[SUCCESS] Annotated image saved to: {result_path}")
 
+            # Save additional copy to /home/data/ directory
+            try:
+                import subprocess
+                current_time = datetime.now(hong_kong_tz)
+                year = current_time.strftime('%Y')
+                month = current_time.strftime('%m')
+                day = current_time.strftime('%d')
+                hour = current_time.strftime('%H')
+
+                # Determine the actual file path
+                if output_path:
+                    # If output_path was provided, result_path is the actual file path
+                    actual_file_path = result_path
+                else:
+                    # If no output_path, file is in output/yyyy/mm/dd/hh/images/
+                    actual_file_path = f"output/{year}/{month}/{day}/{hour}/images/{Path(result_path).name}"
+
+                # Create hierarchical directory structure: /home/data/pics/AI/yyyy/mm/dd/hh/images
+                home_data_dir = Path("/home/data/pics/AI") / year / month / day / hour / "images"
+
+                # Use sudo to create directory and copy file
+                subprocess.run(['sudo', 'mkdir', '-p', str(home_data_dir)], check=True)
+
+                # Get filename from result_path
+                filename = Path(result_path).name
+                home_data_path = home_data_dir / filename
+
+                # Copy the file using sudo
+                subprocess.run(['sudo', 'cp', actual_file_path, str(home_data_path)], check=True)
+                print(f"[SUCCESS] Additional copy saved to: {home_data_path}")
+            except subprocess.CalledProcessError as e:
+                print(f"[WARNING] Failed to save additional copy to /home/data/ (sudo command failed): {e}")
+            except Exception as copy_error:
+                print(f"[WARNING] Failed to save additional copy to /home/data/: {copy_error}")
+
             # Post to server if enabled
             if args.post_to_server:
                 current_time = datetime.now(hong_kong_tz)
@@ -263,6 +300,16 @@ Examples:
                     "pose": get_robot_pose(),
                     "image_path": [result_path]
                 }
+
+                # Print endpoint and data to console with formatting
+                print(f"\n{'='*60}")
+                print(f"[POST REQUEST]")
+                print(f"{'='*60}")
+                print(f"Endpoint: {post_endpoint}")
+                print(f"JSON Data:")
+                import json
+                print(json.dumps(post_data, indent=2, ensure_ascii=False))
+                print(f"{'='*60}\n")
 
                 if post_json_data(post_data, post_endpoint, timeout=api_timeout):
                     posted_count += 1

@@ -73,10 +73,10 @@ def get_robot_pose():
 
 def main():
     # Get robot name from environment variable
-    robot_name = os.getenv('ROBOT_NAME', 'as00212')  # Default to 'as00214' if not set
+    robot_name = os.getenv('ROBOT_NAME', 'as00213')  # Default to 'as00214' if not set
     dept_id = int(os.getenv('DEPT_ID', '10'))  # Default to 10 if not set
-    # Get time range from environment variable (in hours, default 12)
-    fetch_time_range_hours = int(os.getenv('FETCH_TIME_RANGE_HOURS', '12'))
+    # Get time range from environment variable (in hours, supports decimals like 0.5 for 30 minutes)
+    fetch_time_range_hours = float(os.getenv('FETCH_TIME_RANGE_HOURS', '0.083'))
 
     # Get language setting from environment variable (english or chinese)
     language = os.getenv('LANGUAGE', 'english').lower()
@@ -84,7 +84,7 @@ def main():
     # Get API credentials for automatic token extraction
     api_username = os.getenv('API_USERNAME')
     api_password = os.getenv('API_PASSWORD')
-    api_base_url = os.getenv('API_BASE_URL', 'https://bj-robot.aimo.tech')
+    api_base_url = os.getenv('API_BASE_URL', 'https://hk1.aimo.tech')
 
     print(f"[INFO] Robot name: {robot_name}")
     print(f"[INFO] Department ID: {dept_id}")
@@ -168,9 +168,10 @@ def main():
         print("[INFO] No new URLs to process. Exiting.")
         sys.exit(0)
 
-    output_path_list = []
     processed_count = 0
     failed_count = 0
+    post_success_count = 0
+    post_failed_count = 0
 
     # Process each unprocessed URL
     for idx, url in enumerate(unprocessed_urls, 1):
@@ -178,12 +179,32 @@ def main():
             print(f"[PROCESSING] ({idx}/{len(unprocessed_urls)}) {url}")
 
             output_path = describer.process_and_annotate(url)
-            output_path_list.append(output_path)
 
             # Add to processed set immediately after success
             processed_urls.add(url)
             processed_count += 1
             print(f"[SUCCESS] Processed: {url}")
+
+            # Post to server immediately after annotation completion
+            try:
+                annotation_time = datetime.now(hong_kong_tz)
+                post_data = {
+                    "model_type": "ai_description",
+                    "time": annotation_time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "robot": robot,
+                    "camera": camera,
+                    "pose": get_robot_pose(),
+                    "image_path": [output_path]  # Single image path in array
+                }
+                if post_json_data(post_data, post_endpoint, timeout=api_timeout):
+                    post_success_count += 1
+                    print(f"[SUCCESS] Posted annotation to server: {output_path}")
+                else:
+                    post_failed_count += 1
+                    print(f"[WARNING] Failed to post annotation to server: {output_path}")
+            except Exception as post_error:
+                post_failed_count += 1
+                print(f"[ERROR] Error posting to server: {post_error}")
 
         except Exception as e:
             print(f"[ERROR] Failed processing {url}: {e}")
@@ -192,20 +213,8 @@ def main():
     # Save updated processed list
     save_processed_list(processed_urls)
 
-    # Post results if any images were processed
-    if output_path_list:
-        post_data = {
-            "model_type": "ai_description",
-            "time": current_time.strftime("%Y-%m-%d %H:%M:%S"),
-            "robot": robot,
-            "camera": camera,
-            "pose": get_robot_pose(),
-            "image_path": output_path_list
-        }
-        post_json_data(post_data, post_endpoint, timeout=api_timeout)
-        print(f"[INFO] Posted {len(output_path_list)} results to API")
-
     print(f"[INFO] Processing complete: {processed_count} successful, {failed_count} failed")
+    print(f"[INFO] Server posting: {post_success_count} successful, {post_failed_count} failed")
     sys.exit(0)
 
 if __name__=="__main__":

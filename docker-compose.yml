@@ -5,7 +5,7 @@ x-common-env: &common-env
   PYTHONUNBUFFERED: 1
   qwen_api: ${qwen_api}
   DEPT_ID: ${DEPT_ID:-10}
-  FETCH_TIME_RANGE_HOURS: ${FETCH_TIME_RANGE_HOURS:-24}
+  FETCH_TIME_RANGE_HOURS: ${FETCH_TIME_RANGE_HOURS:-1.5}
 
 x-common-config: &common-config
   image: img_description:${IMAGE_TAG:-latest}
@@ -44,12 +44,12 @@ services:
     profiles:
       - build
 
-  image-description-as00213:
+  image-description-as00214:
     <<: *common-config
-    container_name: image-description-as00213
+    container_name: image-description-as00214
     environment:
       <<: *common-env
-      ROBOT_NAME: as00213
+      ROBOT_NAME: as00214
       API_BASE_URL: https://hk1.aimo.tech/
       API_USERNAME: ${API_USERNAME_HK}
       API_PASSWORD: ${API_PASSWORD_HK}
@@ -60,79 +60,7 @@ services:
       options:
         max-size: "10m"
         max-file: "5"
-        tag: "image-description-as00213"
-
-  image-description-as00107:
-    <<: *common-config
-    container_name: image-description-as00107
-    environment:
-      <<: *common-env
-      ROBOT_NAME: as00107
-      API_BASE_URL: https://hk1.aimo.tech/
-      API_USERNAME: ${API_USERNAME_HK}
-      API_PASSWORD: ${API_PASSWORD_HK}
-      LANGUAGE: chinese
-    command: ["python", "/app/scripts/image_description.py"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        tag: "image-description-as00107"
-
-  image-description-as00122:
-    <<: *common-config
-    container_name: image-description-as00122
-    environment:
-      <<: *common-env
-      ROBOT_NAME: as00122
-      API_BASE_URL: https://hk1.aimo.tech/
-      API_USERNAME: ${API_USERNAME_HK}
-      API_PASSWORD: ${API_PASSWORD_HK}
-      LANGUAGE: chinese
-    command: ["python", "/app/scripts/image_description.py"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        tag: "image-description-as00122"
-
-  image-description-as00101:
-    <<: *common-config
-    container_name: image-description-as00101
-    environment:
-      <<: *common-env
-      ROBOT_NAME: as00101
-      API_BASE_URL: https://hk1.aimo.tech/
-      API_USERNAME: ${API_USERNAME_HK}
-      API_PASSWORD: ${API_PASSWORD_HK}
-      LANGUAGE: chinese
-    command: ["python", "/app/scripts/image_description.py"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        tag: "image-description-as00101"
-
-  image-description-as00119:
-    <<: *common-config
-    container_name: image-description-as00119
-    environment:
-      <<: *common-env
-      ROBOT_NAME: as00119
-      API_BASE_URL: https://hk1.aimo.tech/
-      API_USERNAME: ${API_USERNAME_HK}
-      API_PASSWORD: ${API_PASSWORD_HK}
-      LANGUAGE: chinese
-    command: ["python", "/app/scripts/image_description.py"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "5"
-        tag: "image-description-as00119"
+        tag: "image-description-as00214"
 
 volumes:
   output:
