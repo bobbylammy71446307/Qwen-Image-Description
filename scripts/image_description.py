@@ -73,13 +73,13 @@ def get_robot_pose():
 
 def main():
     # Get robot name from environment variable
-    robot_name = os.getenv('ROBOT_NAME', 'as00213')  # Default to 'as00214' if not set
+    robot_name = os.getenv('ROBOT_NAME', 'as00108')  # Default to 'as00214' if not set
     dept_id = int(os.getenv('DEPT_ID', '10'))  # Default to 10 if not set
     # Get time range from environment variable (in hours, supports decimals like 0.5 for 30 minutes)
-    fetch_time_range_hours = float(os.getenv('FETCH_TIME_RANGE_HOURS', '1'))
+    fetch_time_range_hours = float(os.getenv('FETCH_TIME_RANGE_HOURS', '10'))
 
     # Get language setting from environment variable (english or chinese)
-    language = os.getenv('LANGUAGE', 'english').lower()
+    language = os.getenv('LANGUAGE', 'chinese').lower()
 
     # Get API credentials for automatic token extraction
     api_username = os.getenv('API_USERNAME')

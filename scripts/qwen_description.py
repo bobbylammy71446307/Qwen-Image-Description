@@ -12,7 +12,7 @@ class QwenDescriber:
 
     def __init__(self,
                 #  detection_objects= ["unattended object", "pets that are not leashed", "water puddle", "unclosed doors", "bicycle", "violent actions"],
-                 detection_objects= ["alarm light","industrial valve"],
+                 detection_objects= ["unattended object","opened gate"],
                  prompt_file="prompt_english.txt",
                  language="english",
                  text_alignment="left"):
@@ -229,6 +229,7 @@ class QwenDescriber:
             print("[DEBUG] Step 2: Checking for specific objects...")
 
             self.detected_obj_list = []
+            self.unique_labels = set()  # Reset unique labels for each new image
 
             # Translate detection objects to Chinese if needed
             detection_objects_for_query = self.detection_objects
@@ -247,7 +248,9 @@ class QwenDescriber:
                     "unattended object": "無人看管物品",
                     "unclosed doors": "未關門",
                     "bicycle": "自行車",
-                    "violent actions": "暴力行為"
+                    "violent actions": "暴力行為",
+                    "violent actions": "暴力行為",
+		            "opened gate": "打开的门"
                 }
                 detection_objects_for_query = [objects_chinese.get(obj, obj) for obj in self.detection_objects]
 

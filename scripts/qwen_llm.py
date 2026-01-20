@@ -228,7 +228,7 @@ class qwen_llm():
         try:
             prompt_message = self.create_prompt(question, image)
             completion = self.client.chat.completions.create(
-                model="qwen3-omni-flash",
+                model="qwen3-omni-flash-2025-12-01",
                 messages=prompt_message,
                 modalities=["text"],
                 stream=True,
